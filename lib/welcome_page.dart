@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'register_page.dart';
 
 class WelcomePage extends StatelessWidget {
   const WelcomePage({super.key});
@@ -123,7 +124,11 @@ class WelcomePage extends StatelessWidget {
                           height: 52,
                           child: OutlinedButton(
                             onPressed: () {
-                              // TODO: Navigate to register page
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const RegisterPage(),
+                                ),
+                              );
                             },
                             style: OutlinedButton.styleFrom(
                               foregroundColor: const Color(0xFF1A237E),
