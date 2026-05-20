@@ -416,7 +416,7 @@ class _HomePageState extends State<HomePage> {
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
             IconButton(icon: const Icon(Icons.home_outlined), onPressed: () {}),
-            IconButton(icon: const Icon(Icons.search), onPressed: () {}),
+            IconButton(icon: const Icon(Icons.dashboard_outlined), onPressed: () {}),
             const SizedBox(width: 40),
             IconButton(icon: const Icon(Icons.assignment_outlined), onPressed: () {}),
             IconButton(icon: const Icon(Icons.person_outline), onPressed: () {}),
