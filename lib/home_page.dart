@@ -252,41 +252,78 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
 
-            // ── Search Bar ──────────────────────────────────
+            // ── Search & Filter Section (Blue Background) ──────────────────────────
             SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Row(
+              child: Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.blue[400]!, Colors.blue[600]!],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                ),
+                child: Column(
                   children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _searchController,
-                        onChanged: (value) => setState(() => _searchQuery = value),
-                        decoration: InputDecoration(
-                          hintText: 'Hari ini beli apa?',
-                          prefixIcon: const Icon(Icons.search, color: Colors.blue),
-                          filled: true,
-                          fillColor: Colors.white,
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(30),
-                            borderSide: BorderSide.none,
+                    // Search Bar dengan Back Button
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      child: Row(
+                        children: [
+                          GestureDetector(
+                            onTap: () {
+                              _searchController.clear();
+                              setState(() => _searchQuery = '');
+                            },
+                            child: Container(
+                              padding: const EdgeInsets.all(10),
+                              decoration: BoxDecoration(
+                                color: Colors.blue.withOpacity(0.3),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: const Icon(Icons.arrow_back, color: Colors.white, size: 24),
+                            ),
                           ),
-                        ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextField(
+                              controller: _searchController,
+                              onChanged: (value) => setState(() => _searchQuery = value),
+                              decoration: InputDecoration(
+                                hintText: 'Hari ini beli apa?',
+                                hintStyle: const TextStyle(color: Colors.white70),
+                                prefixIcon: const Icon(Icons.search, color: Colors.white),
+                                filled: true,
+                                fillColor: Colors.blue.withOpacity(0.4),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(25),
+                                  borderSide: BorderSide.none,
+                                ),
+                              ),
+                              style: const TextStyle(color: Colors.white),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    GestureDetector(
-                      onTap: _showFilterModal,
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(
-                          Icons.tune,
-                          color: Colors.blue,
-                          size: 24,
+
+                    // Filter Chips Row
+                    Padding(
+                      padding: const EdgeInsets.only(top: 10, left: 16, bottom: 16),
+                      child: SingleChildScrollView(
+                        scrollDirection: Axis.horizontal,
+                        child: Row(
+                          children: [
+                            _FilterChip(
+                              label: 'Filter',
+                              icon: Icons.tune,
+                              onTap: _showFilterModal,
+                            ),
+                            _FilterChip(label: 'Rating', onTap: () {}),
+                            _FilterChip(label: 'Harga', onTap: () {}),
+                            _FilterChip(label: 'Toko', onTap: () {}),
+                            _FilterChip(label: 'Brand', onTap: () {}),
+                            _FilterChip(label: 'Jumlah', onTap: () {}),
+                          ],
                         ),
                       ),
                     ),
@@ -348,23 +385,15 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
 
-            // ── Produk Pilihan Title ────────────────────────
-            SliverToBoxAdapter(
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 20),
-                child: Text('Produk Pilihan', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              ),
-            ),
-
             // ── Product Grid ────────────────────────────────
             SliverPadding(
-              padding: const EdgeInsets.all(20),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
               sliver: SliverGrid(
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 2,
-                  crossAxisSpacing: 15,
-                  mainAxisSpacing: 15,
-                  childAspectRatio: 0.75,
+                  crossAxisSpacing: 12,
+                  mainAxisSpacing: 12,
+                  childAspectRatio: 0.7,
                 ),
                 delegate: SliverChildBuilderDelegate(
                   (context, index) {
@@ -405,7 +434,63 @@ class _HomePageState extends State<HomePage> {
               ),
             ),
 
+            // ── Bottom Cart Section ────────────────────────
+            if (_cartItems.isNotEmpty)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Container(
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        colors: [Colors.blue[400]!, Colors.blue[600]!],
+                      ),
+                      borderRadius: BorderRadius.circular(15),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () {},
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.white,
+                              foregroundColor: Colors.blue,
+                            ),
+                            child: const Text('Lihat Belanjaan mu'),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(20),
+                          ),
+                          child: Text(
+                            _cartItems.values.fold(0, (sum, qty) => sum + qty).toString(),
+                            style: const TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: Colors.blue,
+                              fontSize: 14,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Text(
+                          'Rp. ${(_cartItems.entries.fold(0, (sum, entry) => sum + (entry.key * entry.value)) ~/ 1000000).toStringAsFixed(1)}jt',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
 
+            SliverToBoxAdapter(child: const SizedBox(height: 20)),
           ],
         ),
       ),
@@ -534,27 +619,45 @@ class _ProductCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(15),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 5, offset: const Offset(0, 2))],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
             child: Stack(
               children: [
+                // Image placeholder
                 Container(
                   width: double.infinity,
                   decoration: BoxDecoration(
-                    color: Colors.grey[200],
-                    borderRadius: const BorderRadius.only(topLeft: Radius.circular(20), topRight: Radius.circular(20)),
+                    color: Colors.grey[300],
+                    borderRadius: const BorderRadius.only(topLeft: Radius.circular(15), topRight: Radius.circular(15)),
                   ),
-                  child: Center(child: Icon(Icons.image, size: 50, color: Colors.grey[300])),
+                  child: Center(child: Icon(Icons.image, size: 80, color: Colors.grey[400])),
                 ),
+                // Wishlist heart - top right
                 Positioned(
-                  top: 10,
-                  right: 10,
+                  top: 12,
+                  right: 12,
                   child: GestureDetector(
                     onTap: onWishlistTap,
-                    child: Icon(isWishlisted ? Icons.favorite : Icons.favorite_border, color: Colors.red),
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 5)],
+                      ),
+                      child: Icon(
+                        isWishlisted ? Icons.favorite : Icons.favorite_border,
+                        color: Colors.red,
+                        size: 20,
+                      ),
+                    ),
                   ),
                 ),
               ],
@@ -565,32 +668,52 @@ class _ProductCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(product.name, style: const TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    const Icon(Icons.star, color: Colors.orange, size: 16),
-                    Text(' ${product.rating}', style: const TextStyle(fontSize: 12)),
-                  ],
-                ),
-                const SizedBox(height: 8),
+                // Price badge - blue
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(color: Colors.blue, borderRadius: BorderRadius.circular(6)),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.blue,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
                   child: Text(
-                    'Rp ${product.price}',
-                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                    'Rp ${(product.price ~/ 1000).toString()}.000',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 8),
+                // Rating
+                Row(
+                  children: [
+                    const Icon(Icons.star, color: Colors.orange, size: 14),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${product.rating}',
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                // Product name
+                Text(
+                  product.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                ),
+                const SizedBox(height: 8),
+                // Add/Remove buttons
                 if (quantity == 0)
                   SizedBox(
                     width: double.infinity,
-                    height: 40,
+                    height: 36,
                     child: ElevatedButton.icon(
                       onPressed: onAddToCart,
-                      icon: const Icon(Icons.add_shopping_cart, size: 16),
-                      label: const Text('Tambah'),
+                      icon: const Icon(Icons.add_shopping_cart, size: 14),
+                      label: const Text('Tambah', style: TextStyle(fontSize: 12)),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.blue,
                         foregroundColor: Colors.white,
@@ -600,22 +723,22 @@ class _ProductCard extends StatelessWidget {
                 else
                   Container(
                     decoration: BoxDecoration(
-                      border: Border.all(color: Colors.blue, width: 1.5),
-                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue, width: 1),
+                      borderRadius: BorderRadius.circular(6),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
                         IconButton(
                           onPressed: onRemoveFromCart,
-                          icon: const Icon(Icons.remove_circle_outline, color: Colors.blue, size: 20),
+                          icon: const Icon(Icons.remove_circle_outline, color: Colors.blue, size: 18),
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
                         ),
-                        Text(quantity.toString(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                        Text(quantity.toString(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
                         IconButton(
                           onPressed: onAddToCart,
-                          icon: const Icon(Icons.add_circle_outline, color: Colors.blue, size: 20),
+                          icon: const Icon(Icons.add_circle_outline, color: Colors.blue, size: 18),
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
                         ),
@@ -626,6 +749,52 @@ class _ProductCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _FilterChip extends StatelessWidget {
+  const _FilterChip({
+    required this.label,
+    this.icon,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData? icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(right: 10),
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.white, width: 1.5),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (icon != null) ...[
+                Icon(icon, color: Colors.white, size: 16),
+                const SizedBox(width: 6),
+              ],
+              Text(
+                label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
