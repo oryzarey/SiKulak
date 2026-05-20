@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'register_page.dart';
+import 'login_page.dart';
 
 class WelcomePage extends StatelessWidget {
   const WelcomePage({super.key});
@@ -18,7 +19,7 @@ class WelcomePage extends StatelessWidget {
 
           // ── 2. Blue overlay di atas image
           Container(
-            color: const Color(0xFF2979FF).withOpacity(0.90),
+            color: const Color(0xFF2979FF).withValues(alpha: 0.90),
           ),
 
           // 3. Semua konten
@@ -95,7 +96,11 @@ class WelcomePage extends StatelessWidget {
                           height: 52,
                           child: ElevatedButton(
                             onPressed: () {
-                              // TODO: Navigate to login page
+                              Navigator.of(context).push(
+                                MaterialPageRoute(
+                                  builder: (_) => const LoginPage(),
+                                ),
+                              );
                             },
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF1A237E),
