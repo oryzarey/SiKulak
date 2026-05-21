@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'welcome_page.dart';
+import 'splash_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,7 +29,10 @@ class MyApp extends StatelessWidget {
           seedColor: const Color(0xFF2979FF),
         ),
       ),
-      home: const WelcomePage(),
+      home: const SplashPage(),
+      routes: {
+        '/welcome': (context) => const WelcomePage(),
+      },
     );
   }
 }
