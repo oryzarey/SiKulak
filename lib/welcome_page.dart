@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'register_page.dart';
 import 'login_page.dart';
 
@@ -11,73 +12,51 @@ class WelcomePage extends StatelessWidget {
       body: Stack(
         fit: StackFit.expand,
         children: [
-          // ── 1. Background image full opacity 
+          // ── 1. Background image full opacity
           Image.asset(
             'assets/images/background.png',
             fit: BoxFit.cover,
           ),
 
-          // ── 2. Blue overlay di atas image
+          // ── 2. Blue overlay dengan gradient ke putih
           Container(
-            color: const Color(0xFF2979FF).withValues(alpha: 0.90),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  const Color(0xFF2979FF).withValues(alpha: 0.90),
+                  const Color(0xFF2979FF).withValues(alpha: 0.0),
+                ],
+              ),
+            ),
           ),
 
           // 3. Semua konten
           Column(
             children: [
-              // Bagian atas: teks + logo 
+              // Bagian atas: teks + logo
               Expanded(
-                flex: 6,
+                flex: 3,
                 child: SafeArea(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Text(
-                        'Selamat Datang',
-                        style: TextStyle(
-                          fontFamily: 'Poppins',
-                          fontSize: 26,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                          letterSpacing: 0.5,
-                        ),
-                      ),
-                      const SizedBox(height: 32),
-                      Image.asset(
-                        'assets/icons/logo.png',
+                      const SizedBox(height: 40),
+                      SvgPicture.asset(
+                        'assets/images/Logo.svg',
                         width: 130,
                         height: 130,
-                        color: Colors.white,
-                      ),
-                      const SizedBox(height: 28),
-                      const Text(
-                        'SiKulak',
-                        style: TextStyle(
-                          fontFamily: 'Poppins',
-                          fontSize: 30,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                          letterSpacing: 0.3,
-                        ),
-                      ),
-                      const SizedBox(height: 6),
-                      const Text(
-                        'Sistem Informasi Kulak',
-                        style: TextStyle(
-                          fontFamily: 'Poppins',
-                          fontSize: 14,
-                          fontWeight: FontWeight.w400,
-                          color: Colors.white70,
-                        ),
+                        colorFilter: const ColorFilter.mode(Colors.white, BlendMode.srcIn),
                       ),
                     ],
                   ),
                 ),
               ),
 
-              //Bagian bawah: panel putih
+              //Bagian bawah: panel putih dengan gradient
               Expanded(
-                flex: 4,
+                flex: 5,
                 child: ClipRRect(
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(36),
@@ -85,11 +64,38 @@ class WelcomePage extends StatelessWidget {
                   ),
                   child: Container(
                     width: double.infinity,
-                    color: Colors.white,
+                    decoration: BoxDecoration(
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.white.withValues(alpha: 0.0),
+                          Colors.white,
+                          Colors.white,
+                        ],
+                        stops: const [0.0, 0.4, 1.0],
+                      ),
+                    ),
                     padding: const EdgeInsets.symmetric(horizontal: 32),
                     child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisAlignment: MainAxisAlignment.end,
                       children: [
+                        // Tagline
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 40),
+                          child: const Text(
+                            'Kulakan Lebih Cerdas,\nUntung Lebih Besar',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontFamily: 'Poppins',
+                              fontSize: 26,
+                              fontWeight: FontWeight.w700,
+                              color: Color.fromARGB(255, 0, 0, 0),
+                              letterSpacing: 0.3,
+                            ),
+                          ),
+                        ),
+
                         // Tombol Masuk (filled)
                         SizedBox(
                           width: double.infinity,
@@ -155,6 +161,9 @@ class WelcomePage extends StatelessWidget {
                             ),
                           ),
                         ),
+                        const SizedBox(height: 50),
+                        // Bottom padding untuk jarak dari tepi bawah
+                        const SizedBox(height: 50),
                       ],
                     ),
                   ),

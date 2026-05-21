@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'main.dart';
 import 'login_page.dart';
@@ -10,7 +11,10 @@ class RegisterPage extends StatefulWidget {
   State<RegisterPage> createState() => _RegisterPageState();
 }
 
-class _RegisterPageState extends State<RegisterPage> {
+class _RegisterPageState extends State<RegisterPage>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+  late Animation<double> _logoAnimation;
   final _formKey = GlobalKey<FormState>();
   final _namaController = TextEditingController();
   final _emailController = TextEditingController();
@@ -20,6 +24,19 @@ class _RegisterPageState extends State<RegisterPage> {
   bool _obscurePassword = true;
   bool _obscureKonfirmasi = true;
   bool _isLoading = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      duration: const Duration(milliseconds: 800),
+      vsync: this,
+    );
+    _logoAnimation = Tween<double>(begin: 0.0, end: 1.0).animate(
+      CurvedAnimation(parent: _animationController, curve: Curves.easeOut),
+    );
+    _animationController.forward();
+  }
 
   Future<void> _handleRegister() async {
     if (!_formKey.currentState!.validate()) return;
@@ -49,10 +66,16 @@ class _RegisterPageState extends State<RegisterPage> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Pendaftaran berhasil! Silakan masuk.'),
-          backgroundColor: Colors.green.shade600,
+          content: const Text(
+            'Pendaftaran berhasil! Silakan masuk.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12, color: Colors.white),
+          ),
+          backgroundColor: Colors.green.shade900.withValues(alpha: 0.8),
+          elevation: 0,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+          margin: const EdgeInsets.only(bottom: 30, left: 40, right: 40),
         ),
       );
 
@@ -74,10 +97,16 @@ class _RegisterPageState extends State<RegisterPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Terjadi kesalahan: $e'),
-          backgroundColor: Colors.red.shade600,
+          content: Text(
+            'Terjadi kesalahan: $e',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 12, color: Colors.white),
+          ),
+          backgroundColor: Colors.red.shade900.withValues(alpha: 0.8),
+          elevation: 0,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+          margin: const EdgeInsets.only(bottom: 30, left: 80, right: 80),
         ),
       );
     } finally {
@@ -87,6 +116,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
   @override
   void dispose() {
+    _animationController.dispose();
     _namaController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
@@ -118,19 +148,37 @@ class _RegisterPageState extends State<RegisterPage> {
               Expanded(
                 flex: 3,
                 child: SafeArea(
-                  child: Align(
-                    alignment: Alignment.centerLeft,
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 24),
-                      child: IconButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        icon: const Icon(
-                          Icons.arrow_back_ios_new_rounded,
-                          color: Colors.white,
-                          size: 22,
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Align(
+                        alignment: Alignment.centerLeft,
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          child: IconButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            icon: const Icon(
+                              Icons.arrow_back_ios_new_rounded,
+                              color: Colors.white,
+                              size: 22,
+                            ),
+                          ),
                         ),
                       ),
-                    ),
+                      ScaleTransition(
+                        scale: _logoAnimation,
+                        child: SvgPicture.asset(
+                          'assets/images/Logo.svg',
+                          width: 100,
+                          height: 100,
+                          colorFilter: const ColorFilter.mode(
+                            Colors.white,
+                            BlendMode.srcIn,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                    ],
                   ),
                 ),
               ),

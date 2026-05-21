@@ -15,8 +15,6 @@ void main() {
 
     // Verify welcome page is shown
     expect(find.byType(WelcomePage), findsWidgets);
-    expect(find.text('SiKulak'), findsOneWidget);
-    expect(find.text('Selamat Datang'), findsOneWidget);
   });
 }
 

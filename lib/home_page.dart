@@ -1,5 +1,10 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'main.dart';
+import 'models.dart';
+import 'search_results_page.dart';
+import 'dashboard_page.dart';
+import 'widgets/navbar.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -12,9 +17,7 @@ class _HomePageState extends State<HomePage> {
   final Map<int, int> _cartItems = {}; // productId: quantity
   final Set<int> _wishlistItems = {};
   String _selectedCategory = 'Semua Produk';
-  String _searchQuery = '';
-  final Set<String> _selectedBrands = {};
-  final Set<String> _selectedSuppliers = {};
+  int _selectedNavItem = 0;
   late TextEditingController _searchController;
 
   final List<String> _categories = [
@@ -100,242 +103,137 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
-  List<Product> get _filteredProducts {
-    return _products.where((product) {
-      final matchCategory = _selectedCategory == 'Semua Produk' || product.category == _selectedCategory;
-      final matchSearch = _searchQuery.isEmpty ||
-          product.name.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-          product.brand.toLowerCase().contains(_searchQuery.toLowerCase());
-      final matchBrand = _selectedBrands.isEmpty || _selectedBrands.contains(product.brand);
-      final matchSupplier = _selectedSuppliers.isEmpty || _selectedSuppliers.contains(product.supplier);
-
-      return matchCategory && matchSearch && matchBrand && matchSupplier;
-    }).toList();
-  }
-
-  Set<String> get _allBrands => _products.map((p) => p.brand).toSet();
-  Set<String> get _allSuppliers => _products.map((p) => p.supplier).toSet();
-
-  void _showFilterModal() {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(20),
-          topRight: Radius.circular(20),
-        ),
-      ),
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => Container(
-          padding: const EdgeInsets.all(20),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('Filter', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 20),
-                const Text('Merk', style: TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  children: _allBrands.map((brand) {
-                    final isSelected = _selectedBrands.contains(brand);
-                    return FilterChip(
-                      label: Text(brand),
-                      selected: isSelected,
-                      onSelected: (selected) {
-                        if (selected) {
-                          _selectedBrands.add(brand);
-                        } else {
-                          _selectedBrands.remove(brand);
-                        }
-                        setModalState(() {});
-                      },
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 20),
-                const Text('Supplier', style: TextStyle(fontWeight: FontWeight.bold)),
-                const SizedBox(height: 10),
-                Wrap(
-                  spacing: 8,
-                  children: _allSuppliers.map((supplier) {
-                    final isSelected = _selectedSuppliers.contains(supplier);
-                    return FilterChip(
-                      label: Text(supplier),
-                      selected: isSelected,
-                      onSelected: (selected) {
-                        if (selected) {
-                          _selectedSuppliers.add(supplier);
-                        } else {
-                          _selectedSuppliers.remove(supplier);
-                        }
-                        setModalState(() {});
-                      },
-                    );
-                  }).toList(),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () => Navigator.pop(context),
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.grey),
-                        child: const Text('Tutup', style: TextStyle(color: Colors.white)),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () {
-                          _selectedBrands.clear();
-                          _selectedSuppliers.clear();
-                          setState(() {});
-                          Navigator.pop(context);
-                        },
-                        style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
-                        child: const Text('Reset', style: TextStyle(color: Colors.white)),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final user = supabase.auth.currentUser;
     final metadata = user?.userMetadata;
-    final userName = (metadata?['nama'] ?? metadata?['name'] ?? user?.email ?? 'User')
+    final rawUserName = (metadata?['nama'] ?? metadata?['name'] ?? user?.email ?? 'User')
         .toString()
         .split('@')
         .first;
+    final userName = rawUserName.length > 12 ? '${rawUserName.substring(0, 12)}...' : rawUserName;
 
     return Scaffold(
+      extendBody: true,
+      extendBodyBehindAppBar: true,
       backgroundColor: const Color(0xFFF1F5F9),
-      body: SafeArea(
-        child: CustomScrollView(
-          slivers: [
-            // ── Header Section ──────────────────────────────
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.all(20),
-                child: Row(
-                  children: [
-                    const CircleAvatar(
-                      radius: 25,
-                      backgroundColor: Colors.white,
-                      child: Icon(Icons.person, color: Colors.grey),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text('Selamat datang,', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                          Text(userName, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-                        ],
-                      ),
-                    ),
-                    _HeaderIcon(icon: Icons.shopping_basket_outlined, onTap: () {}),
-                    const SizedBox(width: 10),
-                    _HeaderIcon(icon: Icons.notifications_none_outlined, onTap: () {}),
-                  ],
-                ),
-              ),
-            ),
-
-            // ── Search & Filter Section (Blue Background) ──────────────────────────
-            SliverToBoxAdapter(
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [Colors.blue[400]!, Colors.blue[600]!],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    // Search Bar dengan Back Button
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      child: Row(
-                        children: [
-                          GestureDetector(
-                            onTap: () {
-                              _searchController.clear();
-                              setState(() => _searchQuery = '');
-                            },
-                            child: Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: Colors.blue.withOpacity(0.3),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: const Icon(Icons.arrow_back, color: Colors.white, size: 24),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: TextField(
-                              controller: _searchController,
-                              onChanged: (value) => setState(() => _searchQuery = value),
-                              decoration: InputDecoration(
-                                hintText: 'Hari ini beli apa?',
-                                hintStyle: const TextStyle(color: Colors.white70),
-                                prefixIcon: const Icon(Icons.search, color: Colors.white),
-                                filled: true,
-                                fillColor: Colors.blue.withOpacity(0.4),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(25),
-                                  borderSide: BorderSide.none,
+      // ─────────────────── BODY ───────────────────
+      body: CustomScrollView(
+        physics: const BouncingScrollPhysics(
+          parent: AlwaysScrollableScrollPhysics(),
+        ),
+        slivers: [
+          // ─────────────────── GLASSMORPHISM HEADER ───────────────────
+          SliverAppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            pinned: true,
+            toolbarHeight: 140,
+            automaticallyImplyLeading: false,
+            flexibleSpace: ClipRRect(
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(20)),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: Container(
+                  color: const Color(0xFF2979FF).withValues(alpha: 0.8),
+                  padding: const EdgeInsets.only(top: 55, left: 20, right: 20, bottom: 20),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: SizedBox(
+                          height: 56, // Force profile pill to match icon height
+                          child: _GlassContainer(
+                            padding: const EdgeInsets.symmetric(horizontal: 14),
+                            borderRadius: BorderRadius.circular(30),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                const CircleAvatar(
+                                  radius: 18,
+                                  backgroundColor: Colors.white24,
+                                  child: Icon(Icons.person, color: Colors.white, size: 22),
                                 ),
-                              ),
-                              style: const TextStyle(color: Colors.white),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Text(
+                                        'Selamat datang,',
+                                        style: TextStyle(color: Colors.white70, fontSize: 11),
+                                      ),
+                                      const SizedBox(height: 1),
+                                      Text(
+                                        userName,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                        ],
-                      ),
-                    ),
-
-                    // Filter Chips Row
-                    Padding(
-                      padding: const EdgeInsets.only(top: 10, left: 16, bottom: 16),
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            _FilterChip(
-                              label: 'Filter',
-                              icon: Icons.tune,
-                              onTap: _showFilterModal,
-                            ),
-                            _FilterChip(label: 'Rating', onTap: () {}),
-                            _FilterChip(label: 'Harga', onTap: () {}),
-                            _FilterChip(label: 'Toko', onTap: () {}),
-                            _FilterChip(label: 'Brand', onTap: () {}),
-                            _FilterChip(label: 'Jumlah', onTap: () {}),
-                          ],
                         ),
                       ),
+                      const SizedBox(width: 12),
+                      SizedBox(
+                        width: 56,
+                        height: 56,
+                        child: _HeaderIcon(icon: Icons.notifications_none_outlined, onTap: () {}),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // ── Search Bar ──────────────────────────────────
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                child: TextField(
+                  controller: _searchController,
+                  onSubmitted: (query) {
+                    if (query.isNotEmpty) {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => SearchResultsPage(
+                            searchQuery: query,
+                            products: _products,
+                          ),
+                        ),
+                      );
+                    }
+                  },
+                  decoration: InputDecoration(
+                    hintText: 'Hari ini beli apa?',
+                    prefixIcon: const Icon(Icons.search, color: Colors.blue),
+                    suffixIcon: const Icon(Icons.tune, color: Colors.blue),
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(30),
+                      borderSide: BorderSide.none,
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
 
-            // ── Category Chips ──────────────────────────────
+            // ── Category Chips ──────────────────────────
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.only(top: 20, left: 20),
+                padding: const EdgeInsets.only(top: 8, left: 20, bottom: 16),
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: Row(
@@ -357,8 +255,8 @@ class _HomePageState extends State<HomePage> {
             // ── Promo Banner ────────────────────────────────
             SliverToBoxAdapter(
               child: Container(
-                margin: const EdgeInsets.all(20),
-                padding: const EdgeInsets.all(20),
+                margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                padding: const EdgeInsets.all(24),
                 decoration: BoxDecoration(
                   gradient: const LinearGradient(
                     colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6)],
@@ -387,132 +285,77 @@ class _HomePageState extends State<HomePage> {
 
             // ── Product Grid ────────────────────────────────
             SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
               sliver: SliverGrid(
                 gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                   crossAxisCount: 2,
-                  crossAxisSpacing: 12,
-                  mainAxisSpacing: 12,
-                  childAspectRatio: 0.7,
+                  crossAxisSpacing: 15,
+                  mainAxisSpacing: 15,
+                  childAspectRatio: 0.75,
                 ),
                 delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    final product = _filteredProducts[index];
-                    return _ProductCard(
-                      product: product,
-                      isWishlisted: _wishlistItems.contains(product.id),
-                      quantity: _cartItems[product.id] ?? 0,
-                      onWishlistTap: () {
-                        setState(() {
-                          if (_wishlistItems.contains(product.id)) {
-                            _wishlistItems.remove(product.id);
-                          } else {
-                            _wishlistItems.add(product.id);
-                          }
-                        });
-                      },
-                      onAddToCart: () {
-                        setState(() {
-                          _cartItems[product.id] = (_cartItems[product.id] ?? 0) + 1;
-                        });
-                        ScaffoldMessenger.of(context)
-                            .showSnackBar(const SnackBar(content: Text('Ditambahkan ke keranjang')));
-                      },
-                      onRemoveFromCart: () {
-                        setState(() {
-                          if ((_cartItems[product.id] ?? 0) > 1) {
-                            _cartItems[product.id] = _cartItems[product.id]! - 1;
-                          } else {
-                            _cartItems.remove(product.id);
-                          }
-                        });
-                      },
-                    );
-                  },
-                  childCount: _filteredProducts.length,
+                  (context, index) => _ProductCard(
+                    product: _products[index],
+                    isWishlisted: _wishlistItems.contains(_products[index].id),
+                    quantity: _cartItems[_products[index].id] ?? 0,
+                    onWishlistTap: () {
+                      setState(() {
+                        if (_wishlistItems.contains(_products[index].id)) {
+                          _wishlistItems.remove(_products[index].id);
+                        } else {
+                          _wishlistItems.add(_products[index].id);
+                        }
+                      });
+                    },
+                    onAddToCart: () {
+                      setState(() {
+                        final productId = _products[index].id;
+                        _cartItems[productId] = (_cartItems[productId] ?? 0) + 1;
+                      });
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text(
+                            'Ditambahkan ke keranjang',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 12, color: Colors.white),
+                          ),
+                          backgroundColor: Colors.black.withValues(alpha: 0.5),
+                          elevation: 0,
+                          behavior: SnackBarBehavior.floating,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                          margin: const EdgeInsets.only(bottom: 120, left: 80, right: 80),
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
+                    },
+                    onRemoveFromCart: () {
+                      setState(() {
+                        final productId = _products[index].id;
+                        if ((_cartItems[productId] ?? 0) > 1) {
+                          _cartItems[productId] = _cartItems[productId]! - 1;
+                        } else {
+                          _cartItems.remove(productId);
+                        }
+                      });
+                    },
+                  ),
+                  childCount: _products.length,
                 ),
               ),
             ),
 
-            // ── Bottom Cart Section ────────────────────────
-            if (_cartItems.isNotEmpty)
-              SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Colors.blue[400]!, Colors.blue[600]!],
-                      ),
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: () {},
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.white,
-                              foregroundColor: Colors.blue,
-                            ),
-                            child: const Text('Lihat Belanjaan mu'),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(20),
-                          ),
-                          child: Text(
-                            _cartItems.values.fold(0, (sum, qty) => sum + qty).toString(),
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              color: Colors.blue,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Text(
-                          'Rp. ${(_cartItems.entries.fold(0, (sum, entry) => sum + (entry.key * entry.value)) ~/ 1000000).toStringAsFixed(1)}jt',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-
-            SliverToBoxAdapter(child: const SizedBox(height: 20)),
+            SliverToBoxAdapter(child: const SizedBox(height: 100)),
           ],
         ),
-      ),
-      bottomNavigationBar: BottomAppBar(
-        shape: const CircularNotchedRectangle(),
-        notchMargin: 8,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
-          children: [
-            IconButton(icon: const Icon(Icons.home_outlined), onPressed: () {}),
-            IconButton(icon: const Icon(Icons.dashboard_outlined), onPressed: () {}),
-            const SizedBox(width: 40),
-            IconButton(icon: const Icon(Icons.assignment_outlined), onPressed: () {}),
-            IconButton(icon: const Icon(Icons.person_outline), onPressed: () {}),
-          ],
-        ),
-      ),
+      // ─────────────────── FLOATING ACTION BUTTON ───────────────────
       floatingActionButton: Stack(
         children: [
           FloatingActionButton(
             backgroundColor: Colors.white,
-            onPressed: () {},
+            shape: const CircleBorder(),
+            onPressed: () {
+              _showCartModal(context);
+            },
             child: const Icon(Icons.shopping_basket_outlined, color: Colors.blue),
           ),
           if (_cartItems.isNotEmpty)
@@ -530,31 +373,237 @@ class _HomePageState extends State<HomePage> {
             ),
         ],
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
+      floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      // ─────────────────── FLOATING PILL NAVBAR ───────────────────
+      bottomNavigationBar: CustomNavBar(
+        selectedIndex: _selectedNavItem,
+        onItemTapped: (index) {
+          if (index == _selectedNavItem) return;
+          if (index == 1) {
+            Navigator.of(context).push(
+              PageRouteBuilder(
+                pageBuilder: (context, animation, secondaryAnimation) => const DashboardPage(),
+                transitionDuration: Duration.zero,
+                reverseTransitionDuration: Duration.zero,
+              ),
+            ).then((_) {
+              // Optionally reset index when returning
+              // setState(() => _selectedNavItem = 0);
+            });
+          } else {
+            setState(() => _selectedNavItem = index);
+          }
+        },
+      ),
+    );
+  }
+
+  void _showCartModal(BuildContext context) {
+    final totalItems = _cartItems.values.fold(0, (sum, qty) => sum + qty);
+    final totalPrice = _cartItems.entries.fold<int>(0, (sum, entry) => sum + (entry.key * entry.value));
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.only(topLeft: Radius.circular(20), topRight: Radius.circular(20)),
+      ),
+      builder: (context) => DraggableScrollableSheet(
+        expand: false,
+        initialChildSize: 0.6,
+        minChildSize: 0.4,
+        maxChildSize: 0.9,
+        builder: (context, scrollController) => Container(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  const Text(
+                    'Keranjang Belanja',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  GestureDetector(
+                    onTap: () => Navigator.pop(context),
+                    child: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              if (_cartItems.isEmpty)
+                const Center(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(vertical: 40),
+                    child: Text('Keranjang kosong', style: TextStyle(color: Colors.grey)),
+                  ),
+                )
+              else
+                Expanded(
+                  child: ListView.builder(
+                    controller: scrollController,
+                    itemCount: _cartItems.length,
+                    itemBuilder: (context, index) {
+                      final productId = _cartItems.keys.toList()[index];
+                      final quantity = _cartItems[productId]!;
+                      final product = _products.firstWhere((p) => p.id == productId);
+
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 60,
+                              height: 60,
+                              decoration: BoxDecoration(
+                                color: Colors.grey[200],
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: Icon(Icons.image, color: Colors.grey[300]),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(product.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                  Text('Rp ${product.price}', style: const TextStyle(color: Colors.grey)),
+                                ],
+                              ),
+                            ),
+                            Container(
+                              decoration: BoxDecoration(
+                                border: Border.all(color: Colors.blue),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Row(
+                                children: [
+                                  IconButton(
+                                    onPressed: () {
+                                      setState(() {
+                                        if (quantity > 1) {
+                                          _cartItems[productId] = quantity - 1;
+                                        } else {
+                                          _cartItems.remove(productId);
+                                        }
+                                      });
+                                    },
+                                    icon: const Icon(Icons.remove_circle_outline, size: 18, color: Colors.blue),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                  ),
+                                  Text(quantity.toString(), style: const TextStyle(fontWeight: FontWeight.bold)),
+                                  IconButton(
+                                    onPressed: () {
+                                      setState(() {
+                                        _cartItems[productId] = quantity + 1;
+                                      });
+                                    },
+                                    icon: const Icon(Icons.add_circle_outline, size: 18, color: Colors.blue),
+                                    padding: EdgeInsets.zero,
+                                    constraints: const BoxConstraints(),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              const SizedBox(height: 16),
+              Container(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [Colors.blue[400]!, Colors.blue[600]!],
+                  ),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Total: $totalItems items',
+                          style: const TextStyle(color: Colors.white, fontSize: 12),
+                        ),
+                        Text(
+                          'Rp ${(totalPrice ~/ 1000).toString()}.000',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 16),
+                        ),
+                      ],
+                    ),
+                    ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: const Text(
+                              'Lanjut ke pembayaran',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 12, color: Colors.white),
+                            ),
+                            backgroundColor: Colors.black.withValues(alpha: 0.5),
+                            elevation: 0,
+                            behavior: SnackBarBehavior.floating,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                            margin: const EdgeInsets.only(bottom: 95, left: 80, right: 80),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.payment),
+                      label: const Text('Lanjut'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: Colors.blue,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
 
-class Product {
-  const Product({
-    required this.id,
-    required this.name,
-    required this.price,
-    required this.rating,
-    required this.reviews,
-    required this.category,
-    required this.brand,
-    required this.supplier,
+class _GlassContainer extends StatelessWidget {
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final BorderRadiusGeometry borderRadius;
+
+  const _GlassContainer({
+    required this.child,
+    this.padding = const EdgeInsets.all(12),
+    this.borderRadius = const BorderRadius.all(Radius.circular(20)),
   });
 
-  final int id;
-  final String name;
-  final int price;
-  final double rating;
-  final int reviews;
-  final String category;
-  final String brand;
-  final String supplier;
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: borderRadius,
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+        child: Container(
+          padding: padding,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.15),
+            borderRadius: borderRadius,
+            border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 1.5),
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
 }
 
 class _HeaderIcon extends StatelessWidget {
@@ -565,10 +614,13 @@ class _HeaderIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-      child: GestureDetector(onTap: onTap, child: Icon(icon, color: Colors.blue)),
+    return GestureDetector(
+      onTap: onTap,
+      child: _GlassContainer(
+        padding: EdgeInsets.zero,
+        borderRadius: BorderRadius.circular(50),
+        child: Center(child: Icon(icon, color: Colors.white, size: 24)),
+      ),
     );
   }
 }
@@ -584,15 +636,30 @@ class _CategoryChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return GestureDetector(
       onTap: onTap,
-      child: Container(
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeInOut,
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
         decoration: BoxDecoration(
           color: isSelected ? Colors.blue : Colors.white,
           borderRadius: BorderRadius.circular(20),
+          boxShadow: isSelected
+              ? [
+                  BoxShadow(
+                    color: Colors.blue.withValues(alpha: 0.3),
+                    blurRadius: 8,
+                    offset: const Offset(0, 4),
+                  ),
+                ]
+              : [],
         ),
-        child: Text(
-          label,
-          style: TextStyle(color: isSelected ? Colors.white : Colors.blue, fontWeight: FontWeight.w600),
+        child: AnimatedDefaultTextStyle(
+          duration: const Duration(milliseconds: 300),
+          style: TextStyle(
+            color: isSelected ? Colors.white : Colors.blue,
+            fontWeight: FontWeight.w600,
+          ),
+          child: Text(label),
         ),
       ),
     );
@@ -619,45 +686,27 @@ class _ProductCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 5, offset: const Offset(0, 2))],
-      ),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(20)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Expanded(
             child: Stack(
               children: [
-                // Image placeholder
                 Container(
                   width: double.infinity,
                   decoration: BoxDecoration(
-                    color: Colors.grey[300],
-                    borderRadius: const BorderRadius.only(topLeft: Radius.circular(15), topRight: Radius.circular(15)),
+                    color: Colors.grey[200],
+                    borderRadius: const BorderRadius.only(topLeft: Radius.circular(20), topRight: Radius.circular(20)),
                   ),
-                  child: Center(child: Icon(Icons.image, size: 80, color: Colors.grey[400])),
+                  child: Center(child: Icon(Icons.image, size: 50, color: Colors.grey[300])),
                 ),
-                // Wishlist heart - top right
                 Positioned(
-                  top: 12,
-                  right: 12,
+                  top: 10,
+                  right: 10,
                   child: GestureDetector(
                     onTap: onWishlistTap,
-                    child: Container(
-                      padding: const EdgeInsets.all(8),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 5)],
-                      ),
-                      child: Icon(
-                        isWishlisted ? Icons.favorite : Icons.favorite_border,
-                        color: Colors.red,
-                        size: 20,
-                      ),
-                    ),
+                    child: Icon(isWishlisted ? Icons.favorite : Icons.favorite_border, color: Colors.red),
                   ),
                 ),
               ],
@@ -668,52 +717,32 @@ class _ProductCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Price badge - blue
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.blue,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    'Rp ${(product.price ~/ 1000).toString()}.000',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 12,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                // Rating
+                Text(product.name, style: const TextStyle(fontWeight: FontWeight.bold)),
+                const SizedBox(height: 4),
                 Row(
                   children: [
-                    const Icon(Icons.star, color: Colors.orange, size: 14),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${product.rating}',
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-                    ),
+                    const Icon(Icons.star, color: Colors.orange, size: 16),
+                    Text(' ${product.rating}', style: const TextStyle(fontSize: 12)),
                   ],
                 ),
-                const SizedBox(height: 6),
-                // Product name
-                Text(
-                  product.name,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(color: Colors.blue, borderRadius: BorderRadius.circular(6)),
+                  child: Text(
+                    'Rp ${product.price}',
+                    style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                  ),
                 ),
                 const SizedBox(height: 8),
-                // Add/Remove buttons
                 if (quantity == 0)
                   SizedBox(
                     width: double.infinity,
-                    height: 36,
+                    height: 40,
                     child: ElevatedButton.icon(
                       onPressed: onAddToCart,
-                      icon: const Icon(Icons.add_shopping_cart, size: 14),
-                      label: const Text('Tambah', style: TextStyle(fontSize: 12)),
+                      icon: const Icon(Icons.add_shopping_cart, size: 16),
+                      label: const Text('Tambah'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: Colors.blue,
                         foregroundColor: Colors.white,
@@ -723,22 +752,22 @@ class _ProductCard extends StatelessWidget {
                 else
                   Container(
                     decoration: BoxDecoration(
-                      border: Border.all(color: Colors.blue, width: 1),
-                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: Colors.blue, width: 1.5),
+                      borderRadius: BorderRadius.circular(8),
                     ),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                       children: [
                         IconButton(
                           onPressed: onRemoveFromCart,
-                          icon: const Icon(Icons.remove_circle_outline, color: Colors.blue, size: 18),
+                          icon: const Icon(Icons.remove_circle_outline, color: Colors.blue, size: 20),
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
                         ),
-                        Text(quantity.toString(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
+                        Text(quantity.toString(), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
                         IconButton(
                           onPressed: onAddToCart,
-                          icon: const Icon(Icons.add_circle_outline, color: Colors.blue, size: 18),
+                          icon: const Icon(Icons.add_circle_outline, color: Colors.blue, size: 20),
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
                         ),
@@ -749,52 +778,6 @@ class _ProductCard extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _FilterChip extends StatelessWidget {
-  const _FilterChip({
-    required this.label,
-    this.icon,
-    required this.onTap,
-  });
-
-  final String label;
-  final IconData? icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(right: 10),
-      child: GestureDetector(
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-          decoration: BoxDecoration(
-            border: Border.all(color: Colors.white, width: 1.5),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (icon != null) ...[
-                Icon(icon, color: Colors.white, size: 16),
-                const SizedBox(width: 6),
-              ],
-              Text(
-                label,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }
