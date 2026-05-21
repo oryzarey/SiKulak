@@ -1,8 +1,10 @@
+import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'main.dart';
 import 'models.dart';
 import 'search_results_page.dart';
 import 'dashboard_page.dart';
+import 'widgets/navbar.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -11,14 +13,12 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
+class _HomePageState extends State<HomePage> {
   final Map<int, int> _cartItems = {}; // productId: quantity
   final Set<int> _wishlistItems = {};
   String _selectedCategory = 'Semua Produk';
   int _selectedNavItem = 0;
   late TextEditingController _searchController;
-  late AnimationController _navScaleController;
-  late Map<int, AnimationController> _iconScaleControllers;
 
   final List<String> _categories = [
     'Semua Produk',
@@ -95,28 +95,11 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _searchController = TextEditingController();
-    _navScaleController = AnimationController(
-      duration: const Duration(milliseconds: 300),
-      vsync: this,
-    );
-
-    // Initialize animation controllers for each nav icon
-    _iconScaleControllers = {};
-    for (int i = 0; i < 4; i++) {
-      _iconScaleControllers[i] = AnimationController(
-        duration: const Duration(milliseconds: 200),
-        vsync: this,
-      );
-    }
   }
 
   @override
   void dispose() {
     _searchController.dispose();
-    _navScaleController.dispose();
-    for (var controller in _iconScaleControllers.values) {
-      controller.dispose();
-    }
     super.dispose();
   }
 
@@ -124,296 +107,239 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     final user = supabase.auth.currentUser;
     final metadata = user?.userMetadata;
-    final userName = (metadata?['nama'] ?? metadata?['name'] ?? user?.email ?? 'User')
+    final rawUserName = (metadata?['nama'] ?? metadata?['name'] ?? user?.email ?? 'User')
         .toString()
         .split('@')
         .first;
+    final userName = rawUserName.length > 12 ? '${rawUserName.substring(0, 12)}...' : rawUserName;
 
     return Scaffold(
+      extendBody: true,
+      extendBodyBehindAppBar: true,
       backgroundColor: const Color(0xFFF1F5F9),
-      // ─────────────────── HEADER ───────────────────
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        toolbarHeight: 80,
-        automaticallyImplyLeading: false,
-        title: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
-          child: Row(
-            children: [
-              const CircleAvatar(
-                radius: 25,
-                backgroundColor: Color(0xFFF1F5F9),
-                child: Icon(Icons.person, color: Colors.grey),
+      // ─────────────────── BODY ───────────────────
+      body: CustomScrollView(
+        physics: const BouncingScrollPhysics(
+          parent: AlwaysScrollableScrollPhysics(),
+        ),
+        slivers: [
+          // ─────────────────── GLASSMORPHISM HEADER ───────────────────
+          SliverAppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            pinned: true,
+            toolbarHeight: 140,
+            automaticallyImplyLeading: false,
+            flexibleSpace: ClipRRect(
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(20)),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: Container(
+                  color: const Color(0xFF2979FF).withValues(alpha: 0.8),
+                  padding: const EdgeInsets.only(top: 55, left: 20, right: 20, bottom: 20),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: SizedBox(
+                          height: 56, // Force profile pill to match icon height
+                          child: _GlassContainer(
+                            padding: const EdgeInsets.symmetric(horizontal: 14),
+                            borderRadius: BorderRadius.circular(30),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                const CircleAvatar(
+                                  radius: 18,
+                                  backgroundColor: Colors.white24,
+                                  child: Icon(Icons.person, color: Colors.white, size: 22),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const Text(
+                                        'Selamat datang,',
+                                        style: TextStyle(color: Colors.white70, fontSize: 11),
+                                      ),
+                                      const SizedBox(height: 1),
+                                      Text(
+                                        userName,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.bold,
+                                          fontSize: 14,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      SizedBox(
+                        width: 56,
+                        height: 56,
+                        child: _HeaderIcon(icon: Icons.shopping_basket_outlined, onTap: () {}),
+                      ),
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 56,
+                        height: 56,
+                        child: _HeaderIcon(icon: Icons.notifications_none_outlined, onTap: () {}),
+                      ),
+                    ],
+                  ),
+                ),
               ),
-              const SizedBox(width: 12),
-              Expanded(
+            ),
+          ),
+
+          // ── Search Bar ──────────────────────────────────
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
+                child: TextField(
+                  controller: _searchController,
+                  onSubmitted: (query) {
+                    if (query.isNotEmpty) {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => SearchResultsPage(
+                            searchQuery: query,
+                            products: _products,
+                          ),
+                        ),
+                      );
+                    }
+                  },
+                  decoration: InputDecoration(
+                    hintText: 'Hari ini beli apa?',
+                    prefixIcon: const Icon(Icons.search, color: Colors.blue),
+                    suffixIcon: const Icon(Icons.tune, color: Colors.blue),
+                    filled: true,
+                    fillColor: Colors.white,
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(30),
+                      borderSide: BorderSide.none,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            // ── Category Chips ──────────────────────────
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 8, left: 20, bottom: 16),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: _categories
+                        .map((cat) => Padding(
+                          padding: const EdgeInsets.only(right: 10),
+                          child: _CategoryChip(
+                            label: cat,
+                            isSelected: _selectedCategory == cat,
+                            onTap: () => setState(() => _selectedCategory = cat),
+                          ),
+                        ))
+                        .toList(),
+                  ),
+                ),
+              ),
+            ),
+
+            // ── Promo Banner ────────────────────────────────
+            SliverToBoxAdapter(
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6)],
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text('Selamat datang,', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                    Text(userName, style: const TextStyle(color: Colors.black, fontWeight: FontWeight.bold, fontSize: 16)),
+                    const Text(
+                      'Harga Sabun sedang\nturun sebanyak 30%',
+                      style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    const Text('Tawaran terbatas. Beli sekarang.', style: TextStyle(color: Colors.white70)),
+                    const SizedBox(height: 15),
+                    ElevatedButton(
+                      onPressed: () {},
+                      style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black),
+                      child: const Text('Beli Sekarang'),
+                    ),
                   ],
                 ),
               ),
-              _HeaderIcon(icon: Icons.shopping_basket_outlined, onTap: () {}),
-              const SizedBox(width: 10),
-              _HeaderIcon(icon: Icons.notifications_none_outlined, onTap: () {}),
-            ],
-          ),
-        ),
-      ),
-      // ─────────────────── BODY ───────────────────
-      body: Stack(
-        children: [
-          SafeArea(
-            child: CustomScrollView(
-              physics: const BouncingScrollPhysics(
-                parent: AlwaysScrollableScrollPhysics(),
-              ),
-              slivers: [
-                // ── Search Bar ──────────────────────────────────
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-                    child: TextField(
-                      controller: _searchController,
-                      onSubmitted: (query) {
-                        if (query.isNotEmpty) {
-                          Navigator.of(context).push(
-                            MaterialPageRoute(
-                              builder: (context) => SearchResultsPage(
-                                searchQuery: query,
-                                products: _products,
-                              ),
-                            ),
-                          );
+            ),
+
+            // ── Product Grid ────────────────────────────────
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+              sliver: SliverGrid(
+                gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                  crossAxisCount: 2,
+                  crossAxisSpacing: 15,
+                  mainAxisSpacing: 15,
+                  childAspectRatio: 0.75,
+                ),
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) => _ProductCard(
+                    product: _products[index],
+                    isWishlisted: _wishlistItems.contains(_products[index].id),
+                    quantity: _cartItems[_products[index].id] ?? 0,
+                    onWishlistTap: () {
+                      setState(() {
+                        if (_wishlistItems.contains(_products[index].id)) {
+                          _wishlistItems.remove(_products[index].id);
+                        } else {
+                          _wishlistItems.add(_products[index].id);
                         }
-                      },
-                      decoration: InputDecoration(
-                        hintText: 'Hari ini beli apa?',
-                        prefixIcon: const Icon(Icons.search, color: Colors.blue),
-                        suffixIcon: const Icon(Icons.tune, color: Colors.blue),
-                        filled: true,
-                        fillColor: Colors.white,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(30),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
+                      });
+                    },
+                    onAddToCart: () {
+                      setState(() {
+                        final productId = _products[index].id;
+                        _cartItems[productId] = (_cartItems[productId] ?? 0) + 1;
+                      });
+                      ScaffoldMessenger.of(context)
+                          .showSnackBar(const SnackBar(content: Text('Ditambahkan ke keranjang')));
+                    },
+                    onRemoveFromCart: () {
+                      setState(() {
+                        final productId = _products[index].id;
+                        if ((_cartItems[productId] ?? 0) > 1) {
+                          _cartItems[productId] = _cartItems[productId]! - 1;
+                        } else {
+                          _cartItems.remove(productId);
+                        }
+                      });
+                    },
                   ),
-                ),
-
-                // ── Category Chips ──────────────────────────
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.only(top: 8, left: 20, bottom: 16),
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: Row(
-                        children: _categories
-                            .map((cat) => Padding(
-                              padding: const EdgeInsets.only(right: 10),
-                              child: _CategoryChip(
-                                label: cat,
-                                isSelected: _selectedCategory == cat,
-                                onTap: () => setState(() => _selectedCategory = cat),
-                              ),
-                            ))
-                            .toList(),
-                      ),
-                    ),
-                  ),
-                ),
-
-                // ── Promo Banner ────────────────────────────────
-                SliverToBoxAdapter(
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-                    padding: const EdgeInsets.all(24),
-                    decoration: BoxDecoration(
-                      gradient: const LinearGradient(
-                        colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6)],
-                      ),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Harga Sabun sedang\nturun sebanyak 30%',
-                          style: TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 8),
-                        const Text('Tawaran terbatas. Beli sekarang.', style: TextStyle(color: Colors.white70)),
-                        const SizedBox(height: 15),
-                        ElevatedButton(
-                          onPressed: () {},
-                          style: ElevatedButton.styleFrom(backgroundColor: Colors.white, foregroundColor: Colors.black),
-                          child: const Text('Beli Sekarang'),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-
-                // ── Product Grid ────────────────────────────────
-                SliverPadding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                  sliver: SliverGrid(
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      crossAxisSpacing: 15,
-                      mainAxisSpacing: 15,
-                      childAspectRatio: 0.75,
-                    ),
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) => _ProductCard(
-                        product: _products[index],
-                        isWishlisted: _wishlistItems.contains(_products[index].id),
-                        quantity: _cartItems[_products[index].id] ?? 0,
-                        onWishlistTap: () {
-                          setState(() {
-                            if (_wishlistItems.contains(_products[index].id)) {
-                              _wishlistItems.remove(_products[index].id);
-                            } else {
-                              _wishlistItems.add(_products[index].id);
-                            }
-                          });
-                        },
-                        onAddToCart: () {
-                          setState(() {
-                            final productId = _products[index].id;
-                            _cartItems[productId] = (_cartItems[productId] ?? 0) + 1;
-                          });
-                          ScaffoldMessenger.of(context)
-                              .showSnackBar(const SnackBar(content: Text('Ditambahkan ke keranjang')));
-                        },
-                        onRemoveFromCart: () {
-                          setState(() {
-                            final productId = _products[index].id;
-                            if ((_cartItems[productId] ?? 0) > 1) {
-                              _cartItems[productId] = _cartItems[productId]! - 1;
-                            } else {
-                              _cartItems.remove(productId);
-                            }
-                          });
-                        },
-                      ),
-                      childCount: _products.length,
-                    ),
-                  ),
-                ),
-
-                SliverToBoxAdapter(child: const SizedBox(height: 100)),
-              ],
-            ),
-          ),
-          // ─────────────────── FLOATING PILL NAVBAR ───────────────────
-          Positioned(
-            bottom: 20,
-            left: 16,
-            right: 16,
-            child: TweenAnimationBuilder(
-              tween: Tween<double>(begin: 0, end: 1),
-              duration: const Duration(milliseconds: 500),
-              curve: Curves.easeOut,
-              builder: (context, value, child) {
-                return Opacity(
-                  opacity: value,
-                  child: Transform.scale(
-                    scale: 0.8 + (value * 0.2),
-                    child: child,
-                  ),
-                );
-              },
-              child: Container(
-                decoration: BoxDecoration(
-                  color: const Color(0xFF2979FF),
-                  borderRadius: BorderRadius.circular(50),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.3),
-                      blurRadius: 15,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                child: Row(
-                  mainAxisSize: MainAxisSize.max,
-                  children: [
-                    Expanded(
-                      child: _AnimatedNavButton(
-                        icon: Icons.home,
-                        label: 'Beranda',
-                        isSelected: _selectedNavItem == 0,
-                        animationController: _iconScaleControllers[0]!,
-                        onPressed: () {
-                          setState(() => _selectedNavItem = 0);
-                          _triggerIconAnimation(0);
-                        },
-                      ),
-                    ),
-                    Expanded(
-                      child: _AnimatedNavButton(
-                        icon: Icons.dashboard_outlined,
-                        label: 'Dashboard',
-                        isSelected: _selectedNavItem == 1,
-                        animationController: _iconScaleControllers[1]!,
-                        onPressed: () {
-                          final navContext = context;
-                          setState(() => _selectedNavItem = 1);
-                          _triggerIconAnimation(1);
-                          Future.delayed(const Duration(milliseconds: 200), () {
-                            if (mounted) {
-                              // ignore: use_build_context_synchronously
-                              Navigator.of(navContext).push(
-                                PageRouteBuilder(
-                                  transitionDuration: const Duration(milliseconds: 500),
-                                  pageBuilder: (context, animation, secondaryAnimation) => const DashboardPage(),
-                                  transitionsBuilder: (context, animation, secondaryAnimation, child) {
-                                    return FadeTransition(opacity: animation, child: child);
-                                },
-                              ),
-                            );
-                            }
-                          });
-                        },
-                      ),
-                    ),
-                    Expanded(
-                      child: _AnimatedNavButton(
-                        icon: Icons.assignment_outlined,
-                        label: 'Pesanan',
-                        isSelected: _selectedNavItem == 2,
-                        animationController: _iconScaleControllers[2]!,
-                        onPressed: () {
-                          setState(() => _selectedNavItem = 2);
-                          _triggerIconAnimation(2);
-                        },
-                      ),
-                    ),
-                    Expanded(
-                      child: _AnimatedNavButton(
-                        icon: Icons.person_outline,
-                        label: 'Profil',
-                        isSelected: _selectedNavItem == 3,
-                        animationController: _iconScaleControllers[3]!,
-                        onPressed: () {
-                          setState(() => _selectedNavItem = 3);
-                          _triggerIconAnimation(3);
-                        },
-                      ),
-                    ),
-                  ],
+                  childCount: _products.length,
                 ),
               ),
             ),
-          ),
-        ],
-      ),
+
+            SliverToBoxAdapter(child: const SizedBox(height: 100)),
+          ],
+        ),
       // ─────────────────── FLOATING ACTION BUTTON ───────────────────
       floatingActionButton: Stack(
         children: [
@@ -440,13 +366,28 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
         ],
       ),
       floatingActionButtonLocation: FloatingActionButtonLocation.endFloat,
+      // ─────────────────── FLOATING PILL NAVBAR ───────────────────
+      bottomNavigationBar: CustomNavBar(
+        selectedIndex: _selectedNavItem,
+        onItemTapped: (index) {
+          if (index == _selectedNavItem) return;
+          if (index == 1) {
+            Navigator.of(context).push(
+              PageRouteBuilder(
+                pageBuilder: (context, animation, secondaryAnimation) => const DashboardPage(),
+                transitionDuration: Duration.zero,
+                reverseTransitionDuration: Duration.zero,
+              ),
+            ).then((_) {
+              // Optionally reset index when returning
+              // setState(() => _selectedNavItem = 0);
+            });
+          } else {
+            setState(() => _selectedNavItem = index);
+          }
+        },
+      ),
     );
-  }
-
-  void _triggerIconAnimation(int index) {
-    _iconScaleControllers[index]?.forward().then((_) {
-      _iconScaleControllers[index]?.reverse();
-    });
   }
 
   void _showCartModal(BuildContext context) {
@@ -613,64 +554,31 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
   }
 }
 
-class _AnimatedNavButton extends StatelessWidget {
-  const _AnimatedNavButton({
-    required this.icon,
-    required this.label,
-    required this.isSelected,
-    required this.animationController,
-    required this.onPressed,
-  });
+class _GlassContainer extends StatelessWidget {
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final BorderRadiusGeometry borderRadius;
 
-  final IconData icon;
-  final String label;
-  final bool isSelected;
-  final AnimationController animationController;
-  final VoidCallback onPressed;
+  const _GlassContainer({
+    required this.child,
+    this.padding = const EdgeInsets.all(12),
+    this.borderRadius = const BorderRadius.all(Radius.circular(20)),
+  });
 
   @override
   Widget build(BuildContext context) {
-    return ScaleTransition(
-      scale: Tween<double>(begin: 1.0, end: 1.15).animate(
-        CurvedAnimation(parent: animationController, curve: Curves.elasticOut),
-      ),
-      child: GestureDetector(
-        onTap: onPressed,
-        child: AnimatedBuilder(
-          animation: animationController,
-          builder: (context, child) {
-            return Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20),
-                color: isSelected
-                    ? Colors.white.withValues(alpha: 0.2)
-                    : Colors.transparent,
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    icon,
-                    color: isSelected ? Colors.white : Colors.white70,
-                    size: 24,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    label,
-                    style: TextStyle(
-                      color: isSelected ? Colors.white : Colors.white70,
-                      fontSize: 10,
-                      fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
-              ),
-            );
-          },
+    return ClipRRect(
+      borderRadius: borderRadius,
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+        child: Container(
+          padding: padding,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.15),
+            borderRadius: borderRadius,
+            border: Border.all(color: Colors.white.withValues(alpha: 0.2), width: 1.5),
+          ),
+          child: child,
         ),
       ),
     );
@@ -685,10 +593,13 @@ class _HeaderIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
-      child: GestureDetector(onTap: onTap, child: Icon(icon, color: Colors.blue)),
+    return GestureDetector(
+      onTap: onTap,
+      child: _GlassContainer(
+        padding: EdgeInsets.zero,
+        borderRadius: BorderRadius.circular(50),
+        child: Center(child: Icon(icon, color: Colors.white, size: 24)),
+      ),
     );
   }
 }
