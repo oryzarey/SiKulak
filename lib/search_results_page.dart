@@ -202,7 +202,7 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
                           elevation: 0,
                           behavior: SnackBarBehavior.floating,
                           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-                          margin: const EdgeInsets.only(bottom: 30, left: 80, right: 80),
+                          margin: const EdgeInsets.only(bottom: 120, left: 80, right: 80),
                           duration: const Duration(seconds: 2),
                         ),
                       );
