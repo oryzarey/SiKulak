@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'main.dart';
 import 'models.dart';
 import 'search_results_page.dart';
+import 'dashboard_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -314,7 +315,9 @@ class _HomePageState extends State<HomePage> {
             ),
             IconButton(
               icon: const Icon(Icons.dashboard_outlined, color: Colors.white70),
-              onPressed: () {},
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (context) => const DashboardPage()),
+              ),
             ),
             IconButton(
               icon: const Icon(Icons.assignment_outlined, color: Colors.white70),

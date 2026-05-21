@@ -110,6 +110,36 @@ Skrip tersebut akan membuat tabel `public.todos` dan policy agar data bisa dibac
 
 Semua asset (gambar, font, ikon) berada di folder `assets/`, font di `fonts/`. Jika menambah asset baru, daftarkan ke `pubspec.yaml` pada bagian `flutter/assets` atau `flutter/fonts`.
 
+### App Icon
+
+App icon aplikasi menggunakan SVG file di `assets/images/icon-app.svg`. Untuk menghasilkan launcher icons untuk berbagai platform:
+
+**Menggunakan flutter_launcher_icons:**
+
+1. SVG harus di-convert ke PNG terlebih dahulu (512x512 minimum):
+   - Gunakan Figma, Inkscape, atau online converter (e.g., convertio.co, zamzar.com)
+   - Simpan sebagai `assets/images/icon-app.png`
+
+2. Update `pubspec.yaml`:
+   ```yaml
+   dev_dependencies:
+     flutter_launcher_icons: ^0.14.4
+   
+   flutter_launcher_icons:
+     image_path: "assets/images/icon-app.png"
+     android: true
+     ios: true
+   ```
+
+3. Generate icons:
+   ```bash
+   flutter pub run flutter_launcher_icons
+   ```
+
+**Manual Setup (Jika diperlukan):**
+- Android: Tempatkan PNG icons di `android/app/src/main/res/mipmap-*/`
+- iOS: Update `ios/Runner/Assets.xcassets/AppIcon.appiconset/`
+
 ## Troubleshooting Singkat
 - Jika `flutter pub get` gagal: periksa koneksi internet dan versi Flutter yang kompatibel.
 - Jika emulator/device tidak muncul: jalankan `flutter devices` untuk verifikasi.
