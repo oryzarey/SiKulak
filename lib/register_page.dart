@@ -66,10 +66,16 @@ class _RegisterPageState extends State<RegisterPage>
 
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: const Text('Pendaftaran berhasil! Silakan masuk.'),
-          backgroundColor: Colors.green.shade600,
+          content: const Text(
+            'Pendaftaran berhasil! Silakan masuk.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 12, color: Colors.white),
+          ),
+          backgroundColor: Colors.green.shade900.withValues(alpha: 0.8),
+          elevation: 0,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+          margin: const EdgeInsets.only(bottom: 30, left: 40, right: 40),
         ),
       );
 
@@ -91,10 +97,16 @@ class _RegisterPageState extends State<RegisterPage>
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('Terjadi kesalahan: $e'),
-          backgroundColor: Colors.red.shade600,
+          content: Text(
+            'Terjadi kesalahan: $e',
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 12, color: Colors.white),
+          ),
+          backgroundColor: Colors.red.shade900.withValues(alpha: 0.8),
+          elevation: 0,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+          margin: const EdgeInsets.only(bottom: 30, left: 80, right: 80),
         ),
       );
     } finally {

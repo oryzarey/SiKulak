@@ -1,163 +1,93 @@
-# SiKulak
+# 🛒 SiKulak: Revolusi Kulakan Pedagang Modern
 
-SiKulak adalah aplikasi Flutter untuk kebutuhan tugas MRP/ABMAS. README ini menjelaskan cara men-setup lingkungan pengembangan, menjalankan aplikasi secara lokal, serta membangun artefak untuk target platform (Android, iOS, Web, Desktop).
+![Flutter](https://img.shields.io/badge/Flutter-02569B?style=for-the-badge&logo=flutter&logoColor=white)
+![Supabase](https://img.shields.io/badge/Supabase-3ECF8E?style=for-the-badge&logo=supabase&logoColor=white)
+![Dart](https://img.shields.io/badge/Dart-0175C2?style=for-the-badge&logo=dart&logoColor=white)
+![UI/UX](https://img.shields.io/badge/UI%2FUX-Glassmorphism-purple?style=for-the-badge)
 
-## Fitur Singkat
-- Autentikasi dasar (login/registrasi)
-- Halaman beranda dan welcome
-- Support: Android, iOS, Web, Windows, macOS, Linux
+**SiKulak** adalah platform ekosistem B2B (*Business-to-Business*) modern yang dirancang khusus untuk merevolusi cara pedagang warung, toko kelontong, dan UMKM melakukan *kulakan* (restock barang). Kami memadukan estetika UI kelas dunia dengan *analytics* tajam untuk memberikan pengalaman belanja grosir terbaik di kelasnya.
 
-## Prasyarat
-- Git
-- Flutter SDK (lihat dokumentasi resmi: https://docs.flutter.dev/get-started/install)
-- Untuk Android: Android Studio + Android SDK + Platform-tools
-- Untuk iOS (macOS): Xcode
-- Untuk Windows desktop: Visual Studio (dengan komponen "Desktop development with C++")
+Ucapkan selamat tinggal pada catatan kertas dan antrean panjang di agen grosir. Dengan SiKulak, suplai toko Anda hanya berjarak satu ketukan.
 
-Pastikan `flutter doctor` bersih atau hanya menyisakan hal yang Anda bisa abaikan untuk target yang tidak Anda gunakan.
+---
 
-## Instalasi & Setup Lokal
+## ✨ Fitur Unggulan
 
-1. Clone repository:
+- 💎 **Premium Glassmorphism UI:** Pengalaman visual memukau dengan *liquid glass header*, transisi tanpa hambatan (flush navigation), dan *floating* komponen yang elegan.
+- 📊 **Advanced Analytics Dashboard:** Lacak tren keuntungan Anda secara harfiah *per jam*! Dilengkapi dengan grafik penjualan mingguan (*Bar Chart*) dan garis tren profit (*Line Chart*) menggunakan `fl_chart`.
+- 🛒 **Sistem Keranjang Presisi:** Manajemen keranjang belanja dinamis dengan notifikasi *floating pill* semi-transparan yang responsif dan tidak menutupi produk.
+- 🔐 **Autentikasi Aman:** Sistem pendaftaran dan masuk yang dipersenjatai oleh Supabase Auth.
+- 📱 **Cross-Platform:** Tulis kode sekali, jalankan di Android, iOS, Web, dan Desktop dengan performa *native*.
 
-```
+---
+
+## 🛠 Tech Stack
+
+SiKulak dibangun menggunakan *cutting-edge technologies*:
+
+- **Frontend:** [Flutter](https://flutter.dev/) (Dart)
+- **Backend & Database:** [Supabase](https://supabase.com/) (PostgreSQL)
+- **Visualisasi Data:** [fl_chart](https://pub.dev/packages/fl_chart)
+- **State & Routing:** Flutter Stateful Widgets + Custom Navigator
+
+---
+
+## 🚀 Cara Mulai (Quick Setup)
+
+Siap untuk meluncurkan SiKulak di mesin lokal Anda? Ikuti langkah-langkah di bawah ini.
+
+### 1. Prasyarat Sistem
+Pastikan mesin Anda sudah menginstal:
+- [Git](https://git-scm.com/)
+- [Flutter SDK](https://docs.flutter.dev/get-started/install) (versi 3.0 ke atas direkomendasikan).
+- Android Studio / Xcode (sesuai target OS Anda).
+
+### 2. Kloning Repositori
+```bash
 git clone https://github.com/oryzarey/SiKulak.git
 cd SiKulak
 ```
 
-2. Install dependencies:
-
-```
+### 3. Instalasi Dependensi
+Jalankan perintah berikut untuk mengunduh semua *library* yang diperlukan (seperti `supabase_flutter` dan `fl_chart`):
+```bash
 flutter pub get
 ```
 
-3. Menjalankan aplikasi di emulator / device:
+### 4. Setup Backend (Supabase)
+Aplikasi ini membutuhkan database untuk autentikasi dan menyimpan data analitik/transaksi.
+1. Buat proyek baru secara gratis di [Supabase Dashboard](https://supabase.com/dashboard/).
+2. Buka menu **SQL Editor** di dalam proyek Supabase Anda.
+3. *Copy* seluruh isi file `scripts/create_analytics_schema.sql` dan jalankan (*Run*). Skrip ini akan membuat tabel `products`, `transactions`, `transaction_items` beserta pengaturan keamanannya (*Row Level Security*).
+4. *(Opsional)* Jika Anda ingin mencoba fitur *Todos* dasar, jalankan juga `scripts/create_todos.sql`.
 
-- Untuk Android (emulator atau device terpasang):
+> **⚠️ Penting:** Pastikan `supabaseUrl` dan `supabaseAnonKey` di dalam `lib/main.dart` telah diisi dengan API Keys dari proyek Supabase milik Anda (lihat di menu *Project Settings > API*).
 
+### 5. Jalankan Aplikasi
+Tancapkan perangkat Anda atau nyalakan Emulator, lalu jalankan:
+```bash
+flutter run
 ```
-flutter run -d <device_id>
-```
-
-- Untuk web (Chrome):
-
-```
-flutter run -d chrome
-```
-
-- Untuk Windows/macOS/Linux desktop (jika dikonfigurasi):
-
-```
-flutter run -d windows
-```
-
-4. Build release:
-
-- Android APK / AAB:
-
-```
-flutter build apk --release
-flutter build appbundle --release
-```
-
-- iOS (di macOS, setelah konfigurasi signing di Xcode):
-
-```
-flutter build ios --release
-```
-
-- Web:
-
-```
-flutter build web --release
-```
-
-## Test & Analisis
-
-- Jalankan unit/widget tests:
-
-```
-flutter test
-```
-
-- Analisa statis / lint:
-
-```
-flutter analyze
-```
-
-## Konfigurasi Environment
-
-- Untuk Android SDK dan tools, pastikan `ANDROID_HOME`/`ANDROID_SDK_ROOT` ditetapkan dan `platform-tools` ada di `PATH`.
-- Jika ada variabel environment khusus aplikasi (contoh: API keys), simpan di file `.env` atau gunakan mekanisme konfigurasi yang aman dan jangan commit ke repo.
-
-## Setup Database Supabase
-
-Jika aplikasi menampilkan pesan tidak bisa membaca tabel `todos`, jalankan skrip berikut di Supabase SQL Editor:
-
-- `scripts/create_todos.sql`
-
-Langkah singkat:
-
-1. Buka Supabase Dashboard.
-2. Pilih project SiKulak.
-3. Buka SQL Editor.
-4. Tempel isi `scripts/create_todos.sql` dan jalankan.
-
-Skrip tersebut akan membuat tabel `public.todos` dan policy agar data bisa dibaca dari aplikasi.
-
-## Asset & Font
-
-Semua asset (gambar, font, ikon) berada di folder `assets/`, font di `fonts/`. Jika menambah asset baru, daftarkan ke `pubspec.yaml` pada bagian `flutter/assets` atau `flutter/fonts`.
-
-### App Icon
-
-App icon aplikasi menggunakan SVG file di `assets/images/icon-app.svg`. Untuk menghasilkan launcher icons untuk berbagai platform:
-
-**Menggunakan flutter_launcher_icons:**
-
-1. SVG harus di-convert ke PNG terlebih dahulu (512x512 minimum):
-   - Gunakan Figma, Inkscape, atau online converter (e.g., convertio.co, zamzar.com)
-   - Simpan sebagai `assets/images/icon-app.png`
-
-2. Update `pubspec.yaml`:
-   ```yaml
-   dev_dependencies:
-     flutter_launcher_icons: ^0.14.4
-
-   flutter_launcher_icons:
-     image_path: "assets/images/icon-app.png"
-     android: true
-     ios: true
-   ```
-
-3. Generate icons:
-   ```bash
-   flutter pub run flutter_launcher_icons
-   ```
-
-**Manual Setup (Jika diperlukan):**
-- Android: Tempatkan PNG icons di `android/app/src/main/res/mipmap-*/`
-- iOS: Update `ios/Runner/Assets.xcassets/AppIcon.appiconset/`
-
-## Troubleshooting Singkat
-- Jika `flutter pub get` gagal: periksa koneksi internet dan versi Flutter yang kompatibel.
-- Jika emulator/device tidak muncul: jalankan `flutter devices` untuk verifikasi.
-- Jika build Android gagal terkait signing: periksa konfigurasi `key.properties` dan `build.gradle.kts` di modul `android/app`.
-
-## Kontribusi
-
-Silakan buka issue atau pull request. Ikuti praktik umum: buat branch fitur dari `main`, sertakan deskripsi singkat dan langkah reproduksi bila perlu.
-
-## Lisensi
-
-Lisensi proyek tidak ditentukan. Tambahkan file `LICENSE` jika ingin menetapkan lisensi terbuka.
 
 ---
 
-Jika Anda ingin, saya bisa:
-- Menambahkan badge build/test
-- Menjalankan `flutter analyze` dan `flutter test` di repo ini
-- Membuat panduan debugging untuk masalah umum
+## 🎨 Konvensi UI (Catatan Tim)
 
-Beritahu saya langkah mana yang Anda inginkan selanjutnya.
+Jika Anda ingin berkontribusi pada pengembangan UI SiKulak, harap patuhi *guidelines* berikut yang juga tercatat di `GEMINI.md`:
+- **Navigation Bar:** Setiap halaman yang butuh bilah navigasi bawah **wajib** memanggil `CustomNavBar` (tanpa teks, hanya ikon kapsul).
+- **Scaffold Setup:** Wajib mengatur `extendBody: true` dan `extendBodyBehindAppBar: true` agar efek *glassmorphism* dan *floating bar* bekerja sempurna.
+- **Notifikasi:** Semua peringatan, sukses, atau error dilarang menggunakan *snackbar* bawaan. Wajib memakai *floating pill snackbar* (`SnackBarBehavior.floating`, radius 30) dengan *opacity* 80% (untuk login/register) atau 50% (di halaman utama).
+
+---
+
+## 🤝 Kontribusi
+
+SiKulak lahir dari kolaborasi. Jika Anda memiliki ide brilian, optimasi performa, atau perbaikan *bug*:
+1. *Fork* repository ini.
+2. Buat *branch* fitur Anda (`git checkout -b feature/IdeBrilian`).
+3. Lakukan *Commit* (`git commit -m 'Menambahkan IdeBrilian'`).
+4. *Push* ke *branch* (`git push origin feature/IdeBrilian`).
+5. Buka **Pull Request**.
+
+---
+*Dibuat dengan ❤️ untuk memajukan pedagang Nusantara.*

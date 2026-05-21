@@ -188,12 +188,6 @@ class _HomePageState extends State<HomePage> {
                       SizedBox(
                         width: 56,
                         height: 56,
-                        child: _HeaderIcon(icon: Icons.shopping_basket_outlined, onTap: () {}),
-                      ),
-                      const SizedBox(width: 8),
-                      SizedBox(
-                        width: 56,
-                        height: 56,
                         child: _HeaderIcon(icon: Icons.notifications_none_outlined, onTap: () {}),
                       ),
                     ],
@@ -318,8 +312,21 @@ class _HomePageState extends State<HomePage> {
                         final productId = _products[index].id;
                         _cartItems[productId] = (_cartItems[productId] ?? 0) + 1;
                       });
-                      ScaffoldMessenger.of(context)
-                          .showSnackBar(const SnackBar(content: Text('Ditambahkan ke keranjang')));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text(
+                            'Ditambahkan ke keranjang',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 12, color: Colors.white),
+                          ),
+                          backgroundColor: Colors.black.withValues(alpha: 0.5),
+                          elevation: 0,
+                          behavior: SnackBarBehavior.floating,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                          margin: const EdgeInsets.only(bottom: 95, left: 80, right: 80),
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
                     },
                     onRemoveFromCart: () {
                       setState(() {
@@ -345,6 +352,7 @@ class _HomePageState extends State<HomePage> {
         children: [
           FloatingActionButton(
             backgroundColor: Colors.white,
+            shape: const CircleBorder(),
             onPressed: () {
               _showCartModal(context);
             },
@@ -533,8 +541,21 @@ class _HomePageState extends State<HomePage> {
                     ElevatedButton.icon(
                       onPressed: () {
                         Navigator.pop(context);
-                        ScaffoldMessenger.of(context)
-                            .showSnackBar(const SnackBar(content: Text('Lanjut ke pembayaran')));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: const Text(
+                              'Lanjut ke pembayaran',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(fontSize: 12, color: Colors.white),
+                            ),
+                            backgroundColor: Colors.black.withValues(alpha: 0.5),
+                            elevation: 0,
+                            behavior: SnackBarBehavior.floating,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                            margin: const EdgeInsets.only(bottom: 95, left: 80, right: 80),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
                       },
                       icon: const Icon(Icons.payment),
                       label: const Text('Lanjut'),

@@ -66,10 +66,16 @@ class _LoginPageState extends State<LoginPage>
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(e.message),
-          backgroundColor: Colors.red.shade600,
+          content: Text(
+            e.message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(fontSize: 12, color: Colors.white),
+          ),
+          backgroundColor: Colors.red.shade900.withValues(alpha: 0.8),
+          elevation: 0,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+          margin: const EdgeInsets.only(bottom: 30, left: 80, right: 80),
         ),
       );
     } catch (e) {

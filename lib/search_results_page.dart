@@ -191,8 +191,21 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
                       setState(() {
                         _cartItems[product.id] = (_cartItems[product.id] ?? 0) + 1;
                       });
-                      ScaffoldMessenger.of(context)
-                          .showSnackBar(const SnackBar(content: Text('Ditambahkan ke keranjang')));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: const Text(
+                            'Ditambahkan ke keranjang',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(fontSize: 12, color: Colors.white),
+                          ),
+                          backgroundColor: Colors.black.withValues(alpha: 0.5),
+                          elevation: 0,
+                          behavior: SnackBarBehavior.floating,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+                          margin: const EdgeInsets.only(bottom: 30, left: 80, right: 80),
+                          duration: const Duration(seconds: 2),
+                        ),
+                      );
                     },
                     onRemoveFromCart: () {
                       setState(() {
