@@ -99,7 +99,7 @@ class _HomePageState extends State<HomePage> with TickerProviderStateMixin {
       duration: const Duration(milliseconds: 300),
       vsync: this,
     );
-    
+
     // Initialize animation controllers for each nav icon
     _iconScaleControllers = {};
     for (int i = 0; i < 4; i++) {
