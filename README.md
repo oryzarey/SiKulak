@@ -124,7 +124,7 @@ App icon aplikasi menggunakan SVG file di `assets/images/icon-app.svg`. Untuk me
    ```yaml
    dev_dependencies:
      flutter_launcher_icons: ^0.14.4
-   
+
    flutter_launcher_icons:
      image_path: "assets/images/icon-app.png"
      android: true
