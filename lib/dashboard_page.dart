@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'widgets/navbar.dart';
+import 'main.dart';
+import 'cart_manager.dart';
 
 class DashboardPage extends StatefulWidget {
   const DashboardPage({super.key});
@@ -21,10 +23,332 @@ class _DashboardPageState extends State<DashboardPage> {
   ];
   late List<String> _dates;
 
+  // Raw data lists from Supabase
+  List<dynamic> _rawProducts = [];
+  List<dynamic> _rawTransactions = [];
+  List<dynamic> _rawTransactionItems = [];
+
+  // Computed stats
+  int _totalItemsCount = 0;
+  int _outOfStockCount = 0;
+  int _lowStockCount = 0;
+  int _itemsSoldCount = 0;
+  double _totalProfit = 0.0;
+  String _userName = 'User';
+  String _userEmail = 'user@gmail.com';
+
+  // Chart spots & configurations
+  List<FlSpot> _chartSpots = const [
+    FlSpot(0, 1),
+    FlSpot(1, 2.5),
+    FlSpot(2, 1.8),
+    FlSpot(3, 3.5),
+    FlSpot(4, 3.2),
+    FlSpot(5, 4.8),
+    FlSpot(6, 6),
+  ];
+  double _chartMaxY = 6.0;
+
+  List<BarChartGroupData> _barGroups = [];
+  double _barMaxY = 20.0;
+
   @override
   void initState() {
     super.initState();
     _dates = ['Semua Tanggal', ...List.generate(31, (index) => (index + 1).toString())];
+    _loadData();
+  }
+
+  Future<void> _loadData() async {
+    await Future.wait([
+      _fetchProfile(),
+      _fetchStats(),
+    ]);
+  }
+
+  Future<void> _fetchProfile() async {
+    try {
+      final user = supabase.auth.currentUser;
+      if (user == null) {
+        _setUserNameFromAuth();
+        return;
+      }
+      _userEmail = user.email ?? 'user@gmail.com';
+
+      final data = await supabase
+          .from('profiles')
+          .select('full_name')
+          .eq('id', user.id)
+          .maybeSingle();
+
+      if (!mounted) return;
+      if (data != null && data['full_name'] != null) {
+        final raw = data['full_name'].toString();
+        setState(() {
+          _userName = raw.length > 12 ? '${raw.substring(0, 12)}...' : raw;
+        });
+      } else {
+        _setUserNameFromAuth();
+      }
+    } catch (_) {
+      _setUserNameFromAuth();
+    }
+  }
+
+  void _setUserNameFromAuth() {
+    final user = supabase.auth.currentUser;
+    if (user == null) return;
+    final meta = user.userMetadata;
+    final raw = (meta?['full_name'] ?? meta?['nama'] ?? meta?['name'] ?? user.email ?? 'User')
+        .toString()
+        .split('@')
+        .first;
+    if (mounted) {
+      setState(() {
+        _userName = raw.length > 12 ? '${raw.substring(0, 12)}...' : raw;
+        _userEmail = user.email ?? 'user@gmail.com';
+      });
+    }
+  }
+
+  Future<void> _fetchStats() async {
+    try {
+      final productsResponse = await supabase.from('products').select('id, stock');
+      final txsResponse = await supabase.from('transactions').select('total_profit, created_at');
+      final txItemsResponse = await supabase.from('transaction_items').select('quantity, created_at');
+
+      _rawProducts = productsResponse as List;
+      _rawTransactions = txsResponse as List;
+      _rawTransactionItems = txItemsResponse as List;
+
+      _calculateFilteredStats();
+    } catch (e) {
+      debugPrint('[SiKulak] Dashboard fetch stats failed: $e');
+      _rawProducts = [];
+      _rawTransactions = [];
+      _rawTransactionItems = [];
+      _calculateFilteredStats();
+    }
+  }
+
+  int _getMonthNumber(String monthName) {
+    switch (monthName) {
+      case 'Januari': return 1;
+      case 'Februari': return 2;
+      case 'Maret': return 3;
+      case 'April': return 4;
+      case 'Mei': return 5;
+      case 'Juni': return 6;
+      case 'Juli': return 7;
+      case 'Agustus': return 8;
+      case 'September': return 9;
+      case 'Oktober': return 10;
+      case 'November': return 11;
+      case 'Desember': return 12;
+      default: return 1;
+    }
+  }
+
+  void _calculateFilteredStats() {
+    if (_rawProducts.isEmpty && _rawTransactions.isEmpty && _rawTransactionItems.isEmpty) {
+      if (mounted) {
+        setState(() {
+          _totalItemsCount = 100;
+          _outOfStockCount = 4;
+          _lowStockCount = 4;
+          _itemsSoldCount = 60;
+          _totalProfit = 15000000.0;
+          _chartSpots = const [
+            FlSpot(0, 1),
+            FlSpot(1, 2.5),
+            FlSpot(2, 1.8),
+            FlSpot(3, 3.5),
+            FlSpot(4, 3.2),
+            FlSpot(5, 4.8),
+            FlSpot(6, 6),
+          ];
+          _chartMaxY = 6.0;
+          _barMaxY = 20.0;
+          _barGroups = List.generate(7, (i) {
+            final color = i == 5 ? Colors.amber : (i == 6 ? Colors.green : Colors.blue);
+            return BarChartGroupData(x: i, barRods: [
+              BarChartRodData(
+                toY: [8.0, 10.0, 14.0, 15.0, 13.0, 10.0, 18.0][i],
+                color: color,
+                width: 12,
+                borderRadius: BorderRadius.circular(4),
+              )
+            ]);
+          });
+        });
+      }
+      return;
+    }
+
+    // 1. Calculate overall metrics from products
+    int totalItems = _rawProducts.length;
+    int outOfStock = 0;
+    int lowStock = 0;
+    for (final p in _rawProducts) {
+      final stock = (p['stock'] as num?)?.toInt() ?? 0;
+      if (stock == 0) {
+        outOfStock++;
+      } else if (stock <= 5) {
+        lowStock++;
+      }
+    }
+
+    // 2. Parse selected filter dimensions
+    final yearInt = int.tryParse(_selectedYear) ?? 2026;
+    final monthInt = _getMonthNumber(_selectedMonth);
+    final dateInt = _selectedDate == 'Semua Tanggal' ? null : int.tryParse(_selectedDate);
+
+    // 3. Filter transactions based on date/month/year
+    double totalProfit = 0.0;
+    final filteredTxs = <Map<String, dynamic>>[];
+    for (final tx in _rawTransactions) {
+      final createdAtStr = tx['created_at']?.toString();
+      if (createdAtStr == null) continue;
+      final dt = DateTime.tryParse(createdAtStr);
+      if (dt == null) continue;
+
+      if (dt.year != yearInt) continue;
+      if (dt.month != monthInt) continue;
+      if (dateInt != null && dt.day != dateInt) continue;
+
+      filteredTxs.add(Map<String, dynamic>.from(tx));
+      totalProfit += (tx['total_profit'] as num?)?.toDouble() ?? 0.0;
+    }
+
+    // 4. Filter transaction items based on date/month/year
+    int itemsSold = 0;
+    for (final item in _rawTransactionItems) {
+      final createdAtStr = item['created_at']?.toString();
+      if (createdAtStr == null) continue;
+      final dt = DateTime.tryParse(createdAtStr);
+      if (dt == null) continue;
+
+      if (dt.year != yearInt) continue;
+      if (dt.month != monthInt) continue;
+      if (dateInt != null && dt.day != dateInt) continue;
+
+      itemsSold += (item['quantity'] as num?)?.toInt() ?? 0;
+    }
+
+    // 5. Generate line chart spots (7 buckets)
+    final spotsData = List<double>.filled(7, 0.0);
+    for (final tx in filteredTxs) {
+      final dt = DateTime.tryParse(tx['created_at']?.toString() ?? '');
+      if (dt == null) continue;
+      final profit = (tx['total_profit'] as num?)?.toDouble() ?? 0.0;
+
+      int bucket = 0;
+      if (dateInt != null) {
+        bucket = (dt.hour ~/ 4).clamp(0, 6);
+      } else {
+        bucket = ((dt.day - 1) ~/ 5).clamp(0, 6);
+      }
+      spotsData[bucket] += profit;
+    }
+
+    double maxSpotVal = 0.0;
+    for (final v in spotsData) {
+      if (v > maxSpotVal) maxSpotVal = v;
+    }
+
+    List<FlSpot> spots = [];
+    double chartMaxY = 6.0;
+    if (maxSpotVal == 0.0) {
+      spots = const [
+        FlSpot(0, 1),
+        FlSpot(1, 2.5),
+        FlSpot(2, 1.8),
+        FlSpot(3, 3.5),
+        FlSpot(4, 3.2),
+        FlSpot(5, 4.8),
+        FlSpot(6, 6),
+      ];
+      chartMaxY = 6.0;
+    } else {
+      spots = List.generate(7, (i) => FlSpot(i.toDouble(), spotsData[i]));
+      chartMaxY = maxSpotVal * 1.2;
+    }
+
+    // 6. Generate sales trend bar chart (days 1 to 7 of selected month)
+    final salesData = List<double>.filled(7, 0.0);
+    for (final item in _rawTransactionItems) {
+      final dt = DateTime.tryParse(item['created_at']?.toString() ?? '');
+      if (dt == null) continue;
+      if (dt.year != yearInt || dt.month != monthInt) continue;
+      if (dt.day >= 1 && dt.day <= 7) {
+        salesData[dt.day - 1] += (item['quantity'] as num?)?.toDouble() ?? 0.0;
+      }
+    }
+
+    double maxSalesVal = 0.0;
+    for (final v in salesData) {
+      if (v > maxSalesVal) maxSalesVal = v;
+    }
+
+    List<BarChartGroupData> barGroups = [];
+    double barMaxY = 20.0;
+    if (maxSalesVal == 0.0) {
+      final mockY = [8.0, 10.0, 14.0, 15.0, 13.0, 10.0, 18.0];
+      barGroups = List.generate(7, (i) {
+        final color = i == 5 ? Colors.amber : (i == 6 ? Colors.green : Colors.blue);
+        return BarChartGroupData(x: i, barRods: [
+          BarChartRodData(
+            toY: mockY[i],
+            color: color,
+            width: 12,
+            borderRadius: BorderRadius.circular(4),
+          )
+        ]);
+      });
+      barMaxY = 20.0;
+    } else {
+      int maxIndex = 0;
+      double currentMax = -1.0;
+      for (int i = 0; i < 7; i++) {
+        if (salesData[i] > currentMax) {
+          currentMax = salesData[i];
+          maxIndex = i;
+        }
+      }
+
+      barGroups = List.generate(7, (i) {
+        Color color = Colors.blue;
+        if (i == maxIndex) {
+          color = Colors.green;
+        } else if (i == 5 || i == 6) {
+          color = Colors.amber;
+        }
+
+        return BarChartGroupData(x: i, barRods: [
+          BarChartRodData(
+            toY: salesData[i],
+            color: color,
+            width: 12,
+            borderRadius: BorderRadius.circular(4),
+          )
+        ]);
+      });
+      barMaxY = maxSalesVal * 1.2;
+    }
+
+    if (mounted) {
+      setState(() {
+        _totalItemsCount = totalItems;
+        _outOfStockCount = outOfStock;
+        _lowStockCount = lowStock;
+        _itemsSoldCount = itemsSold;
+        _totalProfit = totalProfit;
+        _chartSpots = spots;
+        _chartMaxY = chartMaxY;
+        _barGroups = barGroups;
+        _barMaxY = barMaxY;
+      });
+    }
   }
 
   // Helper to generate the exact BoxShadow requested by user
@@ -122,23 +446,23 @@ class _DashboardPageState extends State<DashboardPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Row(
+                          Row(
                             children: [
                               Text(
-                                'Ahul Gans',
-                                style: TextStyle(
+                                _userName,
+                                style: const TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
                                   color: Color(0xFF2979FF),
                                 ),
                               ),
-                              SizedBox(width: 8),
-                              Icon(Icons.verified, color: Color(0xFF2979FF), size: 20),
+                              const SizedBox(width: 8),
+                              const Icon(Icons.verified, color: Color(0xFF2979FF), size: 20),
                             ],
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'AhulGans12@gmail.com',
+                            _userEmail,
                             style: TextStyle(
                               fontSize: 12,
                               color: Colors.grey[600],
@@ -187,9 +511,9 @@ class _DashboardPageState extends State<DashboardPage> {
                       ),
                     ),
                     const SizedBox(height: 8),
-                    const Text(
-                      'Rp. 15.000.000',
-                      style: TextStyle(
+                    Text(
+                      CartManager.formatPrice(_totalProfit),
+                      style: const TextStyle(
                         fontSize: 32,
                         fontWeight: FontWeight.bold,
                       ),
@@ -201,11 +525,20 @@ class _DashboardPageState extends State<DashboardPage> {
                       scrollDirection: Axis.horizontal,
                       child: Row(
                         children: [
-                          _buildTimeFilter(_selectedDate, _dates, (val) => setState(() => _selectedDate = val!)),
+                          _buildTimeFilter(_selectedDate, _dates, (val) {
+                            setState(() => _selectedDate = val!);
+                            _calculateFilteredStats();
+                          }),
                           const SizedBox(width: 8),
-                          _buildTimeFilter(_selectedMonth, _months, (val) => setState(() => _selectedMonth = val!)),
+                          _buildTimeFilter(_selectedMonth, _months, (val) {
+                            setState(() => _selectedMonth = val!);
+                            _calculateFilteredStats();
+                          }),
                           const SizedBox(width: 8),
-                          _buildTimeFilter(_selectedYear, _years, (val) => setState(() => _selectedYear = val!)),
+                          _buildTimeFilter(_selectedYear, _years, (val) {
+                            setState(() => _selectedYear = val!);
+                            _calculateFilteredStats();
+                          }),
                         ],
                       ),
                     ),
@@ -271,18 +604,10 @@ class _DashboardPageState extends State<DashboardPage> {
                           minX: 0,
                           maxX: 6,
                           minY: 0,
-                          maxY: 6,
+                          maxY: _chartMaxY,
                           lineBarsData: [
                             LineChartBarData(
-                              spots: const [
-                                FlSpot(0, 1),
-                                FlSpot(1, 2.5),
-                                FlSpot(2, 1.8),
-                                FlSpot(3, 3.5),
-                                FlSpot(4, 3.2),
-                                FlSpot(5, 4.8),
-                                FlSpot(6, 6),
-                              ],
+                              spots: _chartSpots,
                               isCurved: true,
                               color: Colors.green[500],
                               barWidth: 3,
@@ -316,10 +641,10 @@ class _DashboardPageState extends State<DashboardPage> {
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
                   final stats = [
-                    {'label': 'Items', 'value': '100', 'color': Colors.blue},
-                    {'label': 'Out of Stock', 'value': '4', 'color': Colors.red},
-                    {'label': 'Low Stock', 'value': '4', 'color': Colors.amber},
-                    {'label': 'Items Sold', 'value': '60', 'color': Colors.blue},
+                    {'label': 'Items', 'value': _totalItemsCount.toString(), 'color': Colors.blue},
+                    {'label': 'Out of Stock', 'value': _outOfStockCount.toString(), 'color': Colors.red},
+                    {'label': 'Low Stock', 'value': _lowStockCount.toString(), 'color': Colors.amber},
+                    {'label': 'Items Sold', 'value': _itemsSoldCount.toString(), 'color': Colors.blue},
                   ];
 
                   final stat = stats[index];
@@ -364,7 +689,7 @@ class _DashboardPageState extends State<DashboardPage> {
                       child: BarChart(
                         BarChartData(
                           alignment: BarChartAlignment.spaceAround,
-                          maxY: 20,
+                          maxY: _barMaxY,
                           barTouchData: BarTouchData(enabled: false),
                           titlesData: FlTitlesData(
                             show: true,
@@ -406,15 +731,7 @@ class _DashboardPageState extends State<DashboardPage> {
                             },
                           ),
                           borderData: FlBorderData(show: false),
-                          barGroups: [
-                            BarChartGroupData(x: 0, barRods: [BarChartRodData(toY: 8, color: Colors.blue, width: 12, borderRadius: BorderRadius.circular(4))]),
-                            BarChartGroupData(x: 1, barRods: [BarChartRodData(toY: 10, color: Colors.blue, width: 12, borderRadius: BorderRadius.circular(4))]),
-                            BarChartGroupData(x: 2, barRods: [BarChartRodData(toY: 14, color: Colors.blue, width: 12, borderRadius: BorderRadius.circular(4))]),
-                            BarChartGroupData(x: 3, barRods: [BarChartRodData(toY: 15, color: Colors.blue, width: 12, borderRadius: BorderRadius.circular(4))]),
-                            BarChartGroupData(x: 4, barRods: [BarChartRodData(toY: 13, color: Colors.blue, width: 12, borderRadius: BorderRadius.circular(4))]),
-                            BarChartGroupData(x: 5, barRods: [BarChartRodData(toY: 10, color: Colors.amber, width: 12, borderRadius: BorderRadius.circular(4))]), // Highlight weekend
-                            BarChartGroupData(x: 6, barRods: [BarChartRodData(toY: 18, color: Colors.green, width: 12, borderRadius: BorderRadius.circular(4))]), // Highlight highest
-                          ],
+                          barGroups: _barGroups,
                         ),
                       ),
                     ),

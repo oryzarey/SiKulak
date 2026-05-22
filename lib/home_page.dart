@@ -140,20 +140,41 @@ class _HomePageState extends State<HomePage> {
         _categories =
             (data as List).map((j) => Category.fromJson(j)).toList();
       });
-    } catch (_) {}
+    } catch (_) {
+      // Fallback: static categories
+      if (!mounted) return;
+      setState(() {
+        _categories = const [
+          Category(id: 'Sabun', name: 'Sabun'),
+          Category(id: 'Shampoo', name: 'Shampoo'),
+          Category(id: 'Detergen', name: 'Detergen'),
+        ];
+      });
+    }
   }
 
   Future<void> _fetchProducts() async {
     try {
       final data = await supabase
           .from('products')
-          .select('*, categories(id, name), supplier_products(*, suppliers(*))');
+          .select();
 
       if (!mounted) return;
       final list = data as List;
       debugPrint('[SiKulak] Fetched ${list.length} products');
+      final parsedProducts = list.map((json) => Product.fromJson(json)).toList();
+
+      // Extract unique categories dynamically from products
+      final uniqueCats = parsedProducts
+          .map((p) => p.category)
+          .where((cat) => cat.isNotEmpty)
+          .toSet();
+
       setState(() {
-        _products = list.map((json) => Product.fromJson(json)).toList();
+        _products = parsedProducts;
+        if (uniqueCats.isNotEmpty) {
+          _categories = uniqueCats.map((name) => Category(id: name, name: name)).toList();
+        }
         _isLoading = false;
       });
     } catch (e) {
@@ -188,34 +209,130 @@ class _HomePageState extends State<HomePage> {
         .toList();
   }
 
-  // ── Low stock check (from inventories table) ───────────────
+// ── Low stock check (from products table) ───────────────
   Future<void> _checkLowStock() async {
     try {
-      final userId = supabase.auth.currentUser?.id;
-      if (userId == null) return;
-
+      // Fetch items with stock <= 5 (including stock = 0)
       final data = await supabase
-          .from('inventories')
+          .from('products')
           .select()
-          .eq('user_id', userId)
-          .lte('qty_available', 5);
+          .lte('stock', 5);
 
       if (!mounted) return;
       final items =
           (data as List).map((j) => InventoryItem.fromJson(j)).toList();
       if (items.isNotEmpty) {
-        // Fire OS push notification for the first low-stock item
-        final first = items.first;
-        NotificationService().showLowStockNotification(
-          itemName: first.name,
-          qty: first.qtyAvailable,
-        );
+        // Fire OS push notifications for ALL low-stock items
+        for (final item in items) {
+          NotificationService().showLowStockNotification(
+            itemName: item.name,
+            qty: item.qtyAvailable,
+          );
+        }
 
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _showLowStockDialog(items);
         });
       }
     } catch (_) {}
+  }
+
+  // ── Checkout Cart ──────────────────────────────────────────
+  Future<void> _checkoutCart(BuildContext context) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => const Center(child: CircularProgressIndicator()),
+    );
+
+    try {
+      final userId = supabase.auth.currentUser?.id;
+      final totalPrice = _cart.totalPrice;
+      final totalProfit = totalPrice * 0.10; // 10% profit margin
+
+      // 1. Create transaction in DB
+      final transactionResponse = await supabase.from('transactions').insert({
+        'user_id': userId,
+        'total_price': totalPrice,
+        'total_profit': totalProfit,
+        'status': 'completed',
+      }).select().single();
+
+      final transactionId = transactionResponse['id'];
+
+      // 2. Insert transaction items and update stock for each item
+      for (final entry in _cart.items.entries) {
+        final productIdStr = entry.key;
+        final cartItem = entry.value;
+        final productId = int.tryParse(productIdStr);
+
+        if (productId != null) {
+          // Insert item details
+          await supabase.from('transaction_items').insert({
+            'transaction_id': transactionId,
+            'product_id': productId,
+            'quantity': cartItem.quantity,
+            'price_at_purchase': cartItem.price,
+            'profit_at_purchase': cartItem.price * 0.10,
+          });
+
+          // Fetch current stock to subtract
+          final prodData = await supabase
+              .from('products')
+              .select('stock')
+              .eq('id', productId)
+              .maybeSingle();
+          if (prodData != null) {
+            final currentStock = (prodData['stock'] as num?)?.toInt() ?? 0;
+            final newStock = (currentStock - cartItem.quantity).clamp(0, 999999);
+            await supabase
+                .from('products')
+                .update({'stock': newStock})
+                .eq('id', productId);
+          }
+        }
+      }
+
+      // 3. Clear cart and reload
+      _cart.clear();
+      _loadData();
+
+      if (!context.mounted) return;
+      Navigator.pop(context); // Dismiss spinner
+      Navigator.pop(context); // Dismiss cart modal
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Pembayaran berhasil! Transaksi disimpan ke database.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12, color: Colors.white)),
+          backgroundColor: Colors.green.shade900.withValues(alpha: 0.8),
+          elevation: 0,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(30)),
+          margin: const EdgeInsets.only(bottom: 95, left: 40, right: 40),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
+      Navigator.pop(context); // Dismiss spinner
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Gagal melakukan checkout: $e',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 12, color: Colors.white)),
+          backgroundColor: Colors.red.shade900.withValues(alpha: 0.8),
+          elevation: 0,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(30)),
+          margin: const EdgeInsets.only(bottom: 95, left: 40, right: 40),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+    }
   }
 
   // ── Low Stock Dialog ───────────────────────────────────────
@@ -234,7 +351,7 @@ class _HomePageState extends State<HomePage> {
               const Text(
                 'Tambah Stock Anda!',
                 style: TextStyle(
-                  fontSize: 20,
+                  fontSize: 22,
                   fontWeight: FontWeight.bold,
                   color: Color(0xFF2979FF),
                 ),
@@ -251,6 +368,7 @@ class _HomePageState extends State<HomePage> {
                     final isOut = item.qtyAvailable == 0;
                     return Row(
                       children: [
+                        // Product image from DB or fallback icon
                         Container(
                           width: 56,
                           height: 56,
@@ -258,8 +376,18 @@ class _HomePageState extends State<HomePage> {
                             color: Colors.grey[100],
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          child:
-                              Icon(Icons.inventory_2, color: Colors.grey[400]),
+                          clipBehavior: Clip.antiAlias,
+                          child: item.imageUrl != null &&
+                                  item.imageUrl!.isNotEmpty
+                              ? Image.network(
+                                  item.imageUrl!,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => Icon(
+                                      Icons.inventory_2,
+                                      color: Colors.grey[400]),
+                                )
+                              : Icon(Icons.inventory_2,
+                                  color: Colors.grey[400]),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
@@ -322,10 +450,13 @@ class _HomePageState extends State<HomePage> {
                   onPressed: () {
                     Navigator.pop(ctx);
                     // Navigate to SearchPage (restock)
+                    setState(() => _selectedNavItem = 1);
                     Navigator.of(context)
                         .push(MaterialPageRoute(
                             builder: (_) => const SearchResultsPage()))
-                        .then((_) => setState(() {}));
+                        .then((_) {
+                      if (mounted) setState(() => _selectedNavItem = 0);
+                    });
                   },
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF5C6BC0),
@@ -526,26 +657,7 @@ class _HomePageState extends State<HomePage> {
                           ],
                         ),
                         ElevatedButton.icon(
-                          onPressed: () {
-                            Navigator.pop(context);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: const Text('Lanjut ke pembayaran',
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                        fontSize: 12, color: Colors.white)),
-                                backgroundColor:
-                                    Colors.black.withValues(alpha: 0.5),
-                                elevation: 0,
-                                behavior: SnackBarBehavior.floating,
-                                shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(30)),
-                                margin: const EdgeInsets.only(
-                                    bottom: 95, left: 80, right: 80),
-                                duration: const Duration(seconds: 2),
-                              ),
-                            );
-                          },
+                          onPressed: () => _checkoutCart(context),
                           icon: const Icon(Icons.payment),
                           label: const Text('Lanjut'),
                           style: ElevatedButton.styleFrom(
@@ -642,27 +754,13 @@ class _HomePageState extends State<HomePage> {
                         ),
                       ),
                       const SizedBox(width: 12),
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          SizedBox(
-                            width: 56,
-                            height: 56,
-                            child: _HeaderIcon(
-                              icon: Icons.shopping_basket_outlined,
-                              onTap: () => _showCartModal(context),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          SizedBox(
-                            width: 56,
-                            height: 56,
-                            child: _HeaderIcon(
-                              icon: Icons.notifications_none_outlined,
-                              onTap: () {},
-                            ),
-                          ),
-                        ],
+                      SizedBox(
+                        width: 56,
+                        height: 56,
+                        child: _HeaderIcon(
+                          icon: Icons.notifications_none_outlined,
+                          onTap: () {},
+                        ),
                       ),
                     ],
                   ),
@@ -800,13 +898,15 @@ class _HomePageState extends State<HomePage> {
                                     .then((_) => setState(() {}));
                               },
                               style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFFE3D5CA),
-                                  foregroundColor: const Color(0xFF5E503F),
+                                  backgroundColor: const Color(0xFF1A1A2E),
+                                  foregroundColor: Colors.white,
                                   elevation: 0,
+                                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12),
                                   )),
-                              child: const Text('Beli Sekarang'),
+                              child: const Text('Beli Sekarang',
+                                  style: TextStyle(fontWeight: FontWeight.w600)),
                             ),
                           ],
                         ),
@@ -962,7 +1062,7 @@ class _HomePageState extends State<HomePage> {
           borderRadius: BorderRadius.circular(25),
           boxShadow: [
             BoxShadow(
-              color: const Color(0xFF2979FF).withOpacity(0.4),
+              color: const Color(0xFF2979FF).withValues(alpha: 0.4),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -1016,7 +1116,7 @@ class _HomePageState extends State<HomePage> {
         onItemTapped: (index) {
           if (index == _selectedNavItem) return;
           if (index == 1) {
-            // Search tab
+            // Inventory/Search tab
             setState(() => _selectedNavItem = 1);
             Navigator.of(context)
                 .push(PageRouteBuilder(
@@ -1029,7 +1129,7 @@ class _HomePageState extends State<HomePage> {
               if (mounted) setState(() => _selectedNavItem = 0);
             });
           } else if (index == 3) {
-            // Dashboard tab
+            // Dashboard/Analytics tab
             setState(() => _selectedNavItem = 3);
             Navigator.of(context)
                 .push(PageRouteBuilder(
@@ -1042,6 +1142,7 @@ class _HomePageState extends State<HomePage> {
               if (mounted) setState(() => _selectedNavItem = 0);
             });
           } else {
+            // index 2 (Orders) and index 4 (Profile) — placeholder
             setState(() => _selectedNavItem = index);
           }
         },
@@ -1133,7 +1234,7 @@ class _CategoryChip extends StatelessWidget {
           boxShadow: isSelected
               ? [
                   BoxShadow(
-                      color: const Color(0xFF2979FF).withOpacity(0.3),
+                      color: const Color(0xFF2979FF).withValues(alpha: 0.3),
                       blurRadius: 8,
                       offset: const Offset(0, 4))
                 ]
@@ -1190,7 +1291,7 @@ class _ProductCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 8,
               offset: const Offset(0, 2),
             ),
@@ -1232,7 +1333,7 @@ class _ProductCard extends StatelessWidget {
                       child: Container(
                         padding: const EdgeInsets.all(4),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.9),
+                          color: Colors.white.withValues(alpha: 0.9),
                           shape: BoxShape.circle,
                         ),
                         child: Icon(
@@ -1257,7 +1358,7 @@ class _ProductCard extends StatelessWidget {
                           borderRadius: BorderRadius.circular(12),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.1),
+                              color: Colors.black.withValues(alpha: 0.1),
                               blurRadius: 4,
                             ),
                           ],
@@ -1416,7 +1517,7 @@ class _SlidingNotificationBannerState extends State<SlidingNotificationBanner> w
             borderRadius: BorderRadius.circular(16),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.15),
+                color: Colors.black.withValues(alpha: 0.15),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               ),

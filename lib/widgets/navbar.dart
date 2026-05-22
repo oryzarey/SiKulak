@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 
 class CustomNavBar extends StatefulWidget {
@@ -27,11 +26,13 @@ class _CustomNavBarState extends State<CustomNavBar> with SingleTickerProviderSt
       case 0:
         return Icons.home;
       case 1:
-        return Icons.search;
+        return Icons.inventory_2;
       case 2:
-        return Icons.receipt_long;
+        return Icons.work;
       case 3:
-        return Icons.grid_view;
+        return Icons.bar_chart;
+      case 4:
+        return Icons.person;
       default:
         return Icons.home;
     }
@@ -42,11 +43,13 @@ class _CustomNavBarState extends State<CustomNavBar> with SingleTickerProviderSt
       case 0:
         return Icons.home_outlined;
       case 1:
-        return Icons.search;
+        return Icons.inventory_2_outlined;
       case 2:
-        return Icons.receipt_long_outlined;
+        return Icons.work_outline;
       case 3:
-        return Icons.grid_view_outlined;
+        return Icons.bar_chart_outlined;
+      case 4:
+        return Icons.person_outline;
       default:
         return Icons.home_outlined;
     }
@@ -93,7 +96,7 @@ class _CustomNavBarState extends State<CustomNavBar> with SingleTickerProviderSt
         child: LayoutBuilder(
           builder: (context, constraints) {
             final w = constraints.maxWidth;
-            final tabWidth = w / 4;
+            final tabWidth = w / 5;
 
             return AnimatedBuilder(
               animation: _animation,
@@ -147,7 +150,7 @@ class _CustomNavBarState extends State<CustomNavBar> with SingleTickerProviderSt
 
                       // Row of buttons (clicks are handled here)
                       Row(
-                        children: List.generate(4, (index) {
+                        children: List.generate(5, (index) {
                           final distance = (index - animIndexValue).abs();
                           final opacity = distance.clamp(0.0, 1.0);
 
@@ -162,7 +165,7 @@ class _CustomNavBarState extends State<CustomNavBar> with SingleTickerProviderSt
                                   opacity: opacity,
                                   child: Icon(
                                     _getUnselectedIcon(index),
-                                    color: Colors.white.withOpacity(0.9),
+                                    color: Colors.white.withValues(alpha: 0.9),
                                     size: 26,
                                   ),
                                 ),
@@ -237,7 +240,7 @@ class HousePainter extends CustomPainter {
     canvas.drawPath(
       shadowPath,
       Paint()
-        ..color = Colors.black.withOpacity(0.08)
+        ..color = Colors.black.withValues(alpha: 0.08)
         ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
     );
 
