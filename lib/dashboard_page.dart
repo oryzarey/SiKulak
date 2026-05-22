@@ -428,14 +428,11 @@ class _DashboardPageState extends State<DashboardPage> {
         ],
       ),
       bottomNavigationBar: CustomNavBar(
-        selectedIndex: 1, // 1 for Dashboard
+        selectedIndex: 3, // 3 for Dashboard (grid_view icon)
         onItemTapped: (index) {
-          if (index == 1) return; // Already on dashboard
-          if (index == 0) {
-            Navigator.pop(context); // Go back to Home
-          } else {
-            // Placeholder for other pages
-          }
+          if (index == 3) return; // Already on dashboard
+          // Pop back to Home for any other tab — Home handles all routing
+          Navigator.pop(context);
         },
       ),
     );

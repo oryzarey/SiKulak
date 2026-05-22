@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'welcome_page.dart';
 import 'splash_page.dart';
+import 'search_results_page.dart';
+import 'notification_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -9,6 +11,9 @@ Future<void> main() async {
     url: 'https://ebwubdwcksqihxiycdna.supabase.co',
     anonKey: 'sb_publishable_0SXIMX7YlPmkey6HoQ_KYg_L76gdA_X',
   );
+  // Initialize OS notifications
+  await NotificationService().init();
+  await NotificationService().requestPermission();
   runApp(const MyApp());
 }
 
@@ -32,6 +37,7 @@ class MyApp extends StatelessWidget {
       home: const SplashPage(),
       routes: {
         '/welcome': (context) => const WelcomePage(),
+        '/search': (context) => const SearchResultsPage(),
       },
     );
   }

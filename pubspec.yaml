@@ -38,6 +38,7 @@ dependencies:
   flutter_svg: ^2.0.0
   flutter_native_splash: ^2.4.7
   fl_chart: ^1.2.0
+  flutter_local_notifications: ^19.2.1
 
 dev_dependencies:
   flutter_test:
