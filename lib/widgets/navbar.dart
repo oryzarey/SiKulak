@@ -116,32 +116,35 @@ class _CustomNavBarState extends State<CustomNavBar> with SingleTickerProviderSt
                       CustomPaint(
                         size: Size(w, 56),
                         painter: NavBarPainter(
-                          centerX: animCenterX,
                           color: const Color(0xFF2979FF),
                         ),
                       ),
 
-                      // Animated active white house-shaped container
+                      // Animated active white circular container
                       Positioned(
-                        left: animCenterX - 25,
-                        bottom: 6,
-                        child: CustomPaint(
-                          size: const Size(50, 52),
-                          painter: HousePainter(
-                            borderColor: const Color(0xFF2979FF),
-                            fillColor: Colors.white,
+                        left: animCenterX - 24,
+                        bottom: 4,
+                        child: Container(
+                          width: 48,
+                          height: 48,
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.1),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
                           ),
-                          child: SizedBox(
-                            width: 50,
-                            height: 52,
-                            child: Center(
-                              child: Transform.scale(
-                                scale: iconScale,
-                                child: Icon(
-                                  _getSelectedIcon(currentIconIndex),
-                                  color: const Color(0xFF2979FF),
-                                  size: 26,
-                                ),
+                          child: Center(
+                            child: Transform.scale(
+                              scale: iconScale,
+                              child: Icon(
+                                _getSelectedIcon(currentIconIndex),
+                                color: const Color(0xFF2979FF),
+                                size: 26,
                               ),
                             ),
                           ),
@@ -186,82 +189,10 @@ class _CustomNavBarState extends State<CustomNavBar> with SingleTickerProviderSt
   }
 }
 
-class HousePainter extends CustomPainter {
-  final Color borderColor;
-  final Color fillColor;
-
-  HousePainter({
-    required this.borderColor,
-    required this.fillColor,
-  });
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paintFill = Paint()
-      ..color = fillColor
-      ..style = PaintingStyle.fill;
-
-    final paintBorder = Paint()
-      ..color = borderColor
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.0
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round;
-
-    final path = Path();
-    final w = size.width;
-    final h = size.height;
-
-    // Start at bottom left
-    path.moveTo(6, h - 2);
-    path.lineTo(w - 6, h - 2);
-    // Bottom right corner
-    path.quadraticBezierTo(w - 2, h - 2, w - 2, h - 6);
-    // Right wall
-    path.lineTo(w - 2, 20);
-    // Right roof eave
-    path.quadraticBezierTo(w - 2, 16, w - 6, 14);
-    // Right roof slope
-    path.lineTo(w / 2 + 3, 3);
-    // Roof peak
-    path.quadraticBezierTo(w / 2, 1, w / 2 - 3, 3);
-    // Left roof slope
-    path.lineTo(6, 14);
-    // Left roof eave
-    path.quadraticBezierTo(2, 16, 2, 20);
-    // Left wall
-    path.lineTo(2, h - 6);
-    // Bottom left corner
-    path.quadraticBezierTo(2, h - 2, 6, h - 2);
-    path.close();
-
-    // Draw shadow first
-    final shadowPath = path.shift(const Offset(0, 3));
-    canvas.drawPath(
-      shadowPath,
-      Paint()
-        ..color = Colors.black.withValues(alpha: 0.08)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
-    );
-
-    // Draw fill
-    canvas.drawPath(path, paintFill);
-
-    // Draw border
-    canvas.drawPath(path, paintBorder);
-  }
-
-  @override
-  bool shouldRepaint(covariant HousePainter oldDelegate) {
-    return oldDelegate.borderColor != borderColor || oldDelegate.fillColor != fillColor;
-  }
-}
-
 class NavBarPainter extends CustomPainter {
-  final double centerX;
   final Color color;
 
-  NavBarPainter({required this.centerX, required this.color});
+  NavBarPainter({required this.color});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -269,73 +200,18 @@ class NavBarPainter extends CustomPainter {
       ..color = color
       ..style = PaintingStyle.fill;
 
-    final path = Path();
     final r = size.height / 2; // radius for pill ends
-    final w = size.width;
-    final h = size.height;
-
-    // Start at top left
-    path.moveTo(r, 0);
-
-    // Line to start of curve dip
-    path.lineTo(centerX - 42, 0);
-
-    // Curve down into the dip
-    path.cubicTo(
-      centerX - 24, 0,
-      centerX - 20, 24,
-      centerX, 24,
+    canvas.drawRRect(
+      RRect.fromRectAndRadius(
+        Rect.fromLTWH(0, 0, size.width, size.height),
+        Radius.circular(r),
+      ),
+      paint,
     );
-
-    // Curve up out of the dip
-    path.cubicTo(
-      centerX + 20, 24,
-      centerX + 24, 0,
-      centerX + 42, 0,
-    );
-
-    // Line to top right corner start
-    path.lineTo(w - r, 0);
-
-    // Top right arc
-    path.arcToPoint(
-      Offset(w, r),
-      radius: Radius.circular(r),
-    );
-
-    // Line to bottom right corner
-    path.lineTo(w, h - r);
-
-    // Bottom right arc
-    path.arcToPoint(
-      Offset(w - r, h),
-      radius: Radius.circular(r),
-    );
-
-    // Line to bottom left corner
-    path.lineTo(r, h);
-
-    // Bottom left arc
-    path.arcToPoint(
-      Offset(0, h - r),
-      radius: Radius.circular(r),
-    );
-
-    // Line to top left corner start
-    path.lineTo(0, r);
-
-    // Top left arc
-    path.arcToPoint(
-      Offset(r, 0),
-      radius: Radius.circular(r),
-    );
-
-    path.close();
-    canvas.drawPath(path, paint);
   }
 
   @override
   bool shouldRepaint(covariant NavBarPainter oldDelegate) {
-    return oldDelegate.centerX != centerX || oldDelegate.color != color;
+    return oldDelegate.color != color;
   }
 }

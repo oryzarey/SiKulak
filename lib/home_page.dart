@@ -8,6 +8,7 @@ import 'search_results_page.dart';
 import 'dashboard_page.dart';
 import 'widgets/navbar.dart';
 import 'notification_service.dart';
+import 'product_detail_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -74,8 +75,46 @@ class _HomePageState extends State<HomePage> {
     super.dispose();
   }
 
+  Future<void> _checkAndInitializeInventory() async {
+    try {
+      final userId = supabase.auth.currentUser?.id;
+      if (userId == null) return;
+
+      // Check if user has items in inventories
+      final data = await supabase
+          .from('inventories')
+          .select('id')
+          .eq('user_id', userId)
+          .limit(1);
+
+      if ((data as List).isEmpty) {
+        debugPrint('[SiKulak] User has empty inventory. Initializing from global products catalog...');
+        // Fetch all global products
+        final globalProducts = await supabase.from('products').select();
+        final list = globalProducts as List;
+
+        // Insert each product into inventories
+        for (final p in list) {
+          final price = (p['price'] as num?)?.toDouble() ?? 10000.0;
+          await supabase.from('inventories').insert({
+            'user_id': userId,
+            'name': p['name'],
+            'qty_available': (p['stock'] as num?)?.toInt() ?? 15,
+            'capital_price': price * 0.90,
+            'selling_price': price,
+            'exp_date': null,
+          });
+        }
+        debugPrint('[SiKulak] Inventory initialization complete.');
+      }
+    } catch (e) {
+      debugPrint('[SiKulak] Error initializing inventory: $e');
+    }
+  }
+
   // ── Data loading ───────────────────────────────────────────
   Future<void> _loadData() async {
+    await _checkAndInitializeInventory();
     // Run independently so one failure doesn't block the others
     _fetchProfile();
     _fetchCategories();
@@ -164,16 +203,17 @@ class _HomePageState extends State<HomePage> {
       debugPrint('[SiKulak] Fetched ${list.length} products');
       final parsedProducts = list.map((json) => Product.fromJson(json)).toList();
 
-      // Extract unique categories dynamically from products
-      final uniqueCats = parsedProducts
-          .map((p) => p.category)
-          .where((cat) => cat.isNotEmpty)
-          .toSet();
-
       setState(() {
         _products = parsedProducts;
-        if (uniqueCats.isNotEmpty) {
-          _categories = uniqueCats.map((name) => Category(id: name, name: name)).toList();
+        // Only set categories from products if _categories is empty
+        if (_categories.isEmpty) {
+          final uniqueCats = parsedProducts
+              .map((p) => p.categoryName)
+              .where((cat) => cat.isNotEmpty)
+              .toSet();
+          if (uniqueCats.isNotEmpty) {
+            _categories = uniqueCats.map((name) => Category(id: name, name: name)).toList();
+          }
         }
         _isLoading = false;
       });
@@ -204,19 +244,30 @@ class _HomePageState extends State<HomePage> {
   // ── Filtered products ──────────────────────────────────────
   List<Product> get _filteredProducts {
     if (_selectedCategoryId == null) return _products;
-    return _products
-        .where((p) => p.categoryId == _selectedCategoryId)
-        .toList();
+    final isUuid = _selectedCategoryId!.contains('-');
+    if (isUuid) {
+      return _products
+          .where((p) => p.categoryId == _selectedCategoryId)
+          .toList();
+    } else {
+      return _products
+          .where((p) => p.categoryName.toLowerCase() == _selectedCategoryId!.toLowerCase())
+          .toList();
+    }
   }
 
-// ── Low stock check (from products table) ───────────────
+// ── Low stock check (from inventories table) ───────────────
   Future<void> _checkLowStock() async {
     try {
-      // Fetch items with stock <= 5 (including stock = 0)
+      final userId = supabase.auth.currentUser?.id;
+      if (userId == null) return;
+
+      // Fetch items with qty_available <= 5 (including stock = 0)
       final data = await supabase
-          .from('products')
+          .from('inventories')
           .select()
-          .lte('stock', 5);
+          .eq('user_id', userId)
+          .lte('qty_available', 5);
 
       if (!mounted) return;
       final items =
@@ -246,7 +297,9 @@ class _HomePageState extends State<HomePage> {
     );
 
     try {
-      final userId = supabase.auth.currentUser?.id;
+      final user = supabase.auth.currentUser;
+      if (user == null) throw Exception('User tidak terautentikasi.');
+      final userId = user.id;
       final totalPrice = _cart.totalPrice;
       final totalProfit = totalPrice * 0.10; // 10% profit margin
 
@@ -264,32 +317,32 @@ class _HomePageState extends State<HomePage> {
       for (final entry in _cart.items.entries) {
         final productIdStr = entry.key;
         final cartItem = entry.value;
-        final productId = int.tryParse(productIdStr);
+        final productId = productIdStr;
 
-        if (productId != null) {
-          // Insert item details
-          await supabase.from('transaction_items').insert({
-            'transaction_id': transactionId,
-            'product_id': productId,
-            'quantity': cartItem.quantity,
-            'price_at_purchase': cartItem.price,
-            'profit_at_purchase': cartItem.price * 0.10,
-          });
+        // Insert item details
+        await supabase.from('transaction_items').insert({
+          'transaction_id': transactionId,
+          'product_id': productId,
+          'quantity': cartItem.quantity,
+          'price_at_purchase': cartItem.price,
+          'profit_at_purchase': cartItem.price * 0.10,
+        });
 
-          // Fetch current stock to subtract
-          final prodData = await supabase
-              .from('products')
-              .select('stock')
-              .eq('id', productId)
-              .maybeSingle();
-          if (prodData != null) {
-            final currentStock = (prodData['stock'] as num?)?.toInt() ?? 0;
-            final newStock = (currentStock - cartItem.quantity).clamp(0, 999999);
-            await supabase
-                .from('products')
-                .update({'stock': newStock})
-                .eq('id', productId);
-          }
+        // Fetch current stock to subtract from user's inventories
+        final invData = await supabase
+            .from('inventories')
+            .select('id, qty_available')
+            .eq('user_id', userId)
+            .or('id.eq.$productId,name.eq.${cartItem.productName}')
+            .maybeSingle();
+        if (invData != null) {
+          final invId = invData['id'];
+          final currentQty = (invData['qty_available'] as num?)?.toInt() ?? 0;
+          final newQty = (currentQty - cartItem.quantity).clamp(0, 999999);
+          await supabase
+              .from('inventories')
+              .update({'qty_available': newQty})
+              .eq('id', invId);
         }
       }
 
@@ -1022,7 +1075,6 @@ class _HomePageState extends State<HomePage> {
                       product: product,
                       isWishlisted:
                           _wishlistItems.contains(product.id),
-                      quantity: _cart.quantityOf(product.id),
                       onWishlistTap: () {
                         setState(() {
                           if (_wishlistItems.contains(product.id)) {
@@ -1032,16 +1084,12 @@ class _HomePageState extends State<HomePage> {
                           }
                         });
                       },
-                      onAddToCart: () {
-                        _cart.add(product.id,
-                            name: product.name,
-                            price: product.supplierPrice,
-                            imageUrl: product.imageUrl);
-                        setState(() {});
-                      },
-                      onRemoveFromCart: () {
-                        _cart.remove(product.id);
-                        setState(() {});
+                      onTap: () {
+                        Navigator.of(context).push(
+                          MaterialPageRoute(
+                            builder: (context) => ProductDetailPage(product: product),
+                          ),
+                        ).then((_) => setState(() {}));
                       },
                     );
                   },
@@ -1053,62 +1101,6 @@ class _HomePageState extends State<HomePage> {
           const SliverToBoxAdapter(child: SizedBox(height: 100)),
         ],
       ),
-
-      // ─────────── FAB CART ───────────
-      floatingActionButton: Container(
-        height: 50,
-        decoration: BoxDecoration(
-          color: const Color(0xFF2979FF),
-          borderRadius: BorderRadius.circular(25),
-          boxShadow: [
-            BoxShadow(
-              color: const Color(0xFF2979FF).withValues(alpha: 0.4),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
-        ),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(25),
-            onTap: () => _showCartModal(context),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.shopping_basket, color: Colors.white, size: 24),
-                  const SizedBox(width: 8),
-                  Container(
-                    padding: const EdgeInsets.all(6),
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                    ),
-                    constraints: const BoxConstraints(
-                      minWidth: 20,
-                      minHeight: 20,
-                    ),
-                    child: Center(
-                      child: Text(
-                        _cart.totalItems.toString(),
-                        style: const TextStyle(
-                          color: Color(0xFF2979FF),
-                          fontSize: 11,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-      floatingActionButtonLocation:
-          FloatingActionButtonLocation.endFloat,
 
       // ─────────── NAVBAR ───────────
       bottomNavigationBar: CustomNavBar(
@@ -1141,8 +1133,11 @@ class _HomePageState extends State<HomePage> {
                 .then((_) {
               if (mounted) setState(() => _selectedNavItem = 0);
             });
+          } else if (index == 2) {
+            // Show cart modal
+            _showCartModal(context);
           } else {
-            // index 2 (Orders) and index 4 (Profile) — placeholder
+            // index 4 (Profile) — placeholder
             setState(() => _selectedNavItem = index);
           }
         },
@@ -1257,34 +1252,19 @@ class _ProductCard extends StatelessWidget {
   const _ProductCard({
     required this.product,
     required this.isWishlisted,
-    required this.quantity,
     required this.onWishlistTap,
-    required this.onAddToCart,
-    required this.onRemoveFromCart,
+    required this.onTap,
   });
 
   final Product product;
   final bool isWishlisted;
-  final int quantity;
   final VoidCallback onWishlistTap;
-  final VoidCallback onAddToCart;
-  final VoidCallback onRemoveFromCart;
-
-  Widget _blueDot() {
-    return Container(
-      width: 8,
-      height: 8,
-      decoration: const BoxDecoration(
-        color: Color(0xFF2979FF),
-        shape: BoxShape.circle,
-      ),
-    );
-  }
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: onAddToCart,
+      onTap: onTap,
       child: Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -1345,34 +1325,6 @@ class _ProductCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // Quantity Badge
-                  if (quantity > 0)
-                    Positioned(
-                      top: 10,
-                      left: 10,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFE3D5CA),
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.1),
-                              blurRadius: 4,
-                            ),
-                          ],
-                        ),
-                        child: Text(
-                          '$quantity x',
-                          style: const TextStyle(
-                            color: Color(0xFF5E503F),
-                            fontSize: 10,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ),
-                    ),
                   // Price badge
                   Positioned(
                     bottom: 10,
@@ -1410,33 +1362,6 @@ class _ProductCard extends StatelessWidget {
                       Text('${product.supplierRating}',
                           style: const TextStyle(
                               fontSize: 12, fontWeight: FontWeight.bold)),
-                      const Spacer(),
-                      // Add-to-cart button + counter + blue dot
-                      Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          GestureDetector(
-                            onTap: onAddToCart,
-                            child: Container(
-                              width: 22,
-                              height: 22,
-                              decoration: const BoxDecoration(
-                                color: Color(0xFF2979FF),
-                                shape: BoxShape.circle,
-                              ),
-                              child: const Icon(Icons.add,
-                                  color: Colors.white, size: 14),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Text('$quantity',
-                              style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold)),
-                          const SizedBox(width: 6),
-                          _blueDot(),
-                        ],
-                      ),
                     ],
                   ),
                   const SizedBox(height: 6),

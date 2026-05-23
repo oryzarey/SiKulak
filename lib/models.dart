@@ -1,7 +1,8 @@
 /// Product from the shared catalog (products table in Supabase).
 class Product {
-  final String id; // Represents the bigint ID as a string for compatibility
-  final String category;
+  final String id; // Represents the ID as a string for compatibility
+  final String categoryId; // The category_id UUID
+  final String categoryName; // The category name
   final String name;
   final String brand;
   final String? supplier;
@@ -9,39 +10,54 @@ class Product {
   final int stock;
   final double rating;
   final int reviews;
+  final String? imageUrl;
 
   // Compatibility getters for the existing UI code
-  String? get categoryId => category;
-  String? get categoryName => category;
   double get supplierPrice => price;
   String? get supplierName => supplier ?? 'Pemasok Umum';
   double get supplierRating => rating;
   String? get grade => 'A';
-  String? get imageUrl => null;
 
   const Product({
     required this.id,
+    required this.categoryId,
+    required this.categoryName,
     required this.name,
-    required this.category,
     required this.brand,
     this.supplier,
     required this.price,
     required this.stock,
     required this.rating,
     this.reviews = 0,
+    this.imageUrl,
   });
 
   factory Product.fromJson(Map<String, dynamic> json) {
+    String catName = '';
+    final catObj = json['category'] ?? json['categories'];
+    if (catObj is String) {
+      catName = catObj;
+    } else if (catObj is Map) {
+      catName = (catObj['name'] ?? catObj['nama'] ?? '').toString();
+    } else if (catObj is List && catObj.isNotEmpty) {
+      final first = catObj.first;
+      if (first is Map) {
+        catName = (first['name'] ?? first['nama'] ?? '').toString();
+      }
+    }
+
     return Product(
       id: json['id']?.toString() ?? '',
+      categoryId: json['category_id']?.toString() ?? '',
+      categoryName: catName,
       name: (json['name'] ?? '') as String,
-      category: (json['category'] ?? '') as String,
       brand: (json['brand'] ?? '') as String,
       supplier: json['supplier'] as String?,
       price: (json['price'] as num?)?.toDouble() ?? 0.0,
       stock: (json['stock'] as num?)?.toInt() ?? 0,
       rating: (json['rating'] as num?)?.toDouble() ?? 0.0,
       reviews: (json['reviews'] as num?)?.toInt() ?? 0,
+      imageUrl: json['image_url'] as String?,
     );
   }
 }
@@ -67,15 +83,14 @@ class InventoryItem {
   });
 
   factory InventoryItem.fromJson(Map<String, dynamic> json) {
-    final price = (json['price'] as num?)?.toDouble() ?? 0.0;
     return InventoryItem(
       id: json['id']?.toString() ?? '',
       name: (json['name'] ?? '') as String,
-      qtyAvailable: (json['stock'] as num?)?.toInt() ?? 0,
-      capitalPrice: price * 0.90, // Assume capital cost is 90% of price
-      sellingPrice: price,
+      qtyAvailable: (json['qty_available'] as num?)?.toInt() ?? 0,
+      capitalPrice: (json['capital_price'] as num?)?.toDouble() ?? 0.0,
+      sellingPrice: (json['selling_price'] as num?)?.toDouble() ?? 0.0,
       imageUrl: json['image_url'] as String?,
-      expDate: null,
+      expDate: json['exp_date'] != null ? DateTime.tryParse(json['exp_date'].toString()) : null,
     );
   }
 }

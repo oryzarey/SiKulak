@@ -39,6 +39,7 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
   // Transaction history data
   List<Map<String, dynamic>> _transactions = [];
   bool _isLoadingTransactions = false;
+  String _salesTimeframe = 'Harian';
 
   @override
   void initState() {
@@ -104,14 +105,31 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
   Future<void> _fetchAllProducts() async {
     setState(() => _isLoading = true);
     try {
+      final userId = supabase.auth.currentUser?.id;
+      if (userId == null) return;
+
       final data = await supabase
-          .from('products')
+          .from('inventories')
           .select()
+          .eq('user_id', userId)
           .order('name');
 
       if (!mounted) return;
       final list = data as List;
-      final parsedProducts = list.map((json) => Product.fromJson(json)).toList();
+      final parsedProducts = list.map((json) {
+        final price = (json['selling_price'] as num?)?.toDouble() ?? 0.0;
+        final stock = (json['qty_available'] as num?)?.toInt() ?? 0;
+        return Product(
+          id: json['id']?.toString() ?? '',
+          categoryId: '',
+          categoryName: '',
+          name: (json['name'] ?? '') as String,
+          brand: '',
+          price: price,
+          stock: stock,
+          rating: 4.5,
+        );
+      }).toList();
 
       setState(() {
         _products = parsedProducts;
@@ -161,16 +179,35 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
 
     setState(() => _isLoading = true);
     try {
+      final userId = supabase.auth.currentUser?.id;
+      if (userId == null) return;
+
       final data = await supabase
-          .from('products')
+          .from('inventories')
           .select()
+          .eq('user_id', userId)
           .ilike('name', '%${query.trim()}%')
           .order('name');
 
       if (!mounted) return;
+      final list = data as List;
+      final parsedProducts = list.map((json) {
+        final price = (json['selling_price'] as num?)?.toDouble() ?? 0.0;
+        final stock = (json['qty_available'] as num?)?.toInt() ?? 0;
+        return Product(
+          id: json['id']?.toString() ?? '',
+          categoryId: '',
+          categoryName: '',
+          name: (json['name'] ?? '') as String,
+          brand: '',
+          price: price,
+          stock: stock,
+          rating: 4.5,
+        );
+      }).toList();
+
       setState(() {
-        _products =
-            (data as List).map((json) => Product.fromJson(json)).toList();
+        _products = parsedProducts;
         _isLoading = false;
       });
     } catch (e) {
@@ -730,10 +767,10 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
                   product.price;
 
               try {
-                await supabase.from('products').update({
-                  'stock': newStock,
-                  'price': newPrice,
-                }).eq('id', int.parse(product.id));
+                await supabase.from('inventories').update({
+                  'qty_available': newStock,
+                  'selling_price': newPrice,
+                }).eq('id', product.id);
 
                 if (!ctx.mounted) return;
                 Navigator.pop(ctx);
@@ -793,7 +830,81 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
     );
   }
 
-  // ── Transaction history content ────────────────────────────
+  // ── Sales history statistics & aggregation ─────────────────
+  Map<String, dynamic> _computeSalesStats() {
+    final now = DateTime.now();
+    double totalProfit = 0.0;
+    int itemsSold = 0;
+    
+    final Map<String, Map<String, dynamic>> productSales = {};
+
+    for (final tx in _transactions) {
+      final createdAtStr = tx['created_at'] as String?;
+      if (createdAtStr == null) continue;
+      final date = DateTime.tryParse(createdAtStr)?.toLocal();
+      if (date == null) continue;
+
+      // Check timeframe filter
+      bool inTimeframe = false;
+      if (_salesTimeframe == 'Harian') {
+        inTimeframe = date.year == now.year && date.month == now.month && date.day == now.day;
+      } else if (_salesTimeframe == 'Mingguan') {
+        final difference = now.difference(date).inDays;
+        inTimeframe = difference <= 7;
+      } else if (_salesTimeframe == 'Bulanan') {
+        inTimeframe = date.year == now.year && date.month == now.month;
+      } else if (_salesTimeframe == 'Tahunan') {
+        inTimeframe = date.year == now.year;
+      }
+
+      if (!inTimeframe) continue;
+
+      totalProfit += (tx['total_profit'] as num?)?.toDouble() ?? 0.0;
+      final items = tx['transaction_items'] as List? ?? [];
+      
+      for (final item in items) {
+        final qty = (item['quantity'] as num?)?.toInt() ?? 0;
+        itemsSold += qty;
+
+        final product = item['products'] as Map<String, dynamic>?;
+        if (product != null) {
+          final productId = item['product_id']?.toString() ?? '';
+          final productName = product['name'] as String? ?? 'Produk';
+          final price = (product['price'] as num?)?.toDouble() ?? 0.0;
+          final imageUrl = product['image_url'] as String?;
+
+          if (productSales.containsKey(productId)) {
+            productSales[productId]!['quantity'] = productSales[productId]!['quantity'] + qty;
+          } else {
+            productSales[productId] = {
+              'id': productId,
+              'name': productName,
+              'price': price,
+              'image_url': imageUrl,
+              'quantity': qty,
+              'stock': (product['stock'] as num?)?.toInt() ?? 0,
+            };
+          }
+        }
+      }
+    }
+
+    if (_transactions.isEmpty) {
+      return {
+        'total_profit': 0.0,
+        'items_sold': 0,
+        'products': [],
+      };
+    }
+
+    return {
+      'total_profit': totalProfit,
+      'items_sold': itemsSold,
+      'products': productSales.values.toList(),
+    };
+  }
+
+  // ── Redesigned Transaction history content ──────────────────
   List<Widget> _buildTransactionHistory() {
     if (_isLoadingTransactions) {
       return [
@@ -809,64 +920,177 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
       ];
     }
 
-    if (_transactions.isEmpty) {
-      return [
-        SliverToBoxAdapter(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(40),
-              child: Column(
-                children: [
-                  Icon(Icons.receipt_long_outlined,
-                      color: Colors.grey[300], size: 48),
-                  const SizedBox(height: 12),
-                  Text('Belum ada riwayat penjualan',
-                      style: TextStyle(color: Colors.grey[500])),
-                ],
+    final stats = _computeSalesStats();
+    final double totalProfit = stats['total_profit'] as double;
+    final int itemsSold = stats['items_sold'] as int;
+    final List<Map<String, dynamic>> products = List<Map<String, dynamic>>.from(stats['products']);
+
+    return [
+      // 1. Timeframe Filter Chips
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.only(top: 8, left: 20, right: 20, bottom: 16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: ['Harian', 'Mingguan', 'Bulanan', 'Tahunan'].map((tf) {
+              final isSel = _salesTimeframe == tf;
+              return GestureDetector(
+                onTap: () => setState(() => _salesTimeframe = tf),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: isSel ? const Color(0xFF2979FF) : Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isSel ? const Color(0xFF2979FF) : const Color(0xFFBDD7FF),
+                      width: 1.5,
+                    ),
+                  ),
+                  child: Text(
+                    tf,
+                    style: TextStyle(
+                      color: isSel ? Colors.white : const Color(0xFF2979FF),
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ),
+
+      // 2. Statistics Cards Row
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.only(left: 20, right: 20, bottom: 20),
+          child: Row(
+            children: [
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Total Keuntungan',
+                        style: TextStyle(
+                          color: Color(0xFF22C55E),
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        'Rp. ${CartManager.formatPrice(totalProfit).replaceFirst('Rp. ', '')}',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1E293B),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.05),
+                        blurRadius: 10,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'Items Sold',
+                        style: TextStyle(
+                          color: Color(0xFF2979FF),
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '$itemsSold',
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF1E293B),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+
+      // 3. Section Header: Penjualan
+      const SliverToBoxAdapter(
+        child: Padding(
+          padding: EdgeInsets.only(left: 20, right: 20, bottom: 12),
+          child: Text(
+            'Penjualan',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF1E3A8A),
             ),
           ),
         ),
-      ];
-    }
+      ),
 
-    return [
+      // 4. Sales List
       SliverPadding(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 20),
         sliver: SliverList(
           delegate: SliverChildBuilderDelegate(
             (context, index) {
-              final tx = _transactions[index];
-              return _buildTransactionItem(tx);
+              final prod = products[index];
+              return _buildSalesListItem(prod);
             },
-            childCount: _transactions.length,
+            childCount: products.length,
           ),
         ),
       ),
     ];
   }
 
-  Widget _buildTransactionItem(Map<String, dynamic> tx) {
-    final createdAt = tx['created_at'] as String?;
-    final totalPrice = (tx['total_price'] as num?)?.toDouble() ?? 0;
-    final items = tx['transaction_items'] as List? ?? [];
-    final status = tx['status'] as String? ?? 'completed';
-
-    // Format date
-    String dateStr = '';
-    if (createdAt != null) {
-      try {
-        final dt = DateTime.parse(createdAt).toLocal();
-        dateStr =
-            '${dt.day}/${dt.month}/${dt.year} ${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-      } catch (_) {
-        dateStr = createdAt;
-      }
-    }
+  Widget _buildSalesListItem(Map<String, dynamic> prod) {
+    final String id = prod['id'].toString();
+    final String name = prod['name'] as String;
+    final double price = prod['price'] as double;
+    final String? imageUrl = prod['image_url'] as String?;
+    final int qty = prod['quantity'] as int;
+    final int stock = prod['stock'] as int;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
@@ -878,77 +1102,100 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
           ),
         ],
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
-          // Date + status row
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(dateStr,
-                  style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey[500],
-                      fontWeight: FontWeight.w500)),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-                decoration: BoxDecoration(
-                  color: status == 'completed'
-                      ? Colors.green[50]
-                      : Colors.orange[50],
-                  borderRadius: BorderRadius.circular(8),
+          // Product Image
+          Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: Colors.grey[100],
+              borderRadius: BorderRadius.circular(12),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: imageUrl != null && imageUrl.isNotEmpty
+                ? Image.network(
+                    imageUrl,
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) => const Center(
+                      child: Icon(Icons.image, size: 30, color: Colors.grey),
+                    ),
+                  )
+                : const Center(
+                    child: Icon(Icons.image, size: 30, color: Colors.grey),
+                  ),
+          ),
+          const SizedBox(width: 14),
+
+          // Product Info
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  name,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                    color: Color(0xFF1E293B),
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
-                child: Text(
-                  status == 'completed' ? 'Selesai' : status,
+                const SizedBox(height: 4),
+                Text(
+                  'Rp.${CartManager.formatPrice(price).replaceFirst('Rp. ', '')}',
                   style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: status == 'completed'
-                        ? Colors.green[700]
-                        : Colors.orange[700],
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                    fontWeight: FontWeight.w500,
                   ),
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-          // Items
-          ...items.map((item) {
-            final product = item['products'] as Map<String, dynamic>?;
-            final productName =
-                product?['name'] as String? ?? 'Produk';
-            final qty = (item['quantity'] as num?)?.toInt() ?? 0;
-            final priceAtPurchase =
-                (item['price_at_purchase'] as num?)?.toDouble() ?? 0;
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text('$productName x$qty',
-                      style: const TextStyle(fontSize: 13)),
-                  Text(CartManager.formatPrice(priceAtPurchase * qty),
-                      style: const TextStyle(
-                          fontSize: 13, fontWeight: FontWeight.w500)),
-                ],
-              ),
-            );
-          }),
-          const Divider(height: 16),
-          // Total
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              const Text('Total',
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 14)),
-              Text(CartManager.formatPrice(totalPrice),
+                const SizedBox(height: 4),
+                Text(
+                  'Terjual: $qty',
                   style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                      color: Color(0xFF2979FF))),
-            ],
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF2979FF),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Edit Button on right
+          GestureDetector(
+            onTap: () {
+              // Create a dummy Product object to reuse the edit stock dialog
+              final dummyProduct = Product(
+                id: id,
+                categoryId: '',
+                categoryName: '',
+                name: name,
+                brand: '',
+                price: price,
+                stock: stock,
+                rating: 4.5,
+                imageUrl: imageUrl,
+              );
+              _showEditStockDialog(dummyProduct);
+            },
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.edit, size: 14, color: Colors.grey[500]),
+                const SizedBox(width: 2),
+                Text(
+                  'Edit',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[500],
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),

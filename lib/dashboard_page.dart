@@ -113,13 +113,35 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Future<void> _fetchStats() async {
     try {
-      final productsResponse = await supabase.from('products').select('id, stock');
-      final txsResponse = await supabase.from('transactions').select('total_profit, created_at');
-      final txItemsResponse = await supabase.from('transaction_items').select('quantity, created_at');
+      final user = supabase.auth.currentUser;
+      if (user == null) return;
+      final userId = user.id;
+
+      final productsResponse = await supabase
+          .from('inventories')
+          .select('id, qty_available')
+          .eq('user_id', userId);
+
+      final txsResponse = await supabase
+          .from('transactions')
+          .select('total_profit, created_at, transaction_items(quantity, created_at)')
+          .eq('user_id', userId);
 
       _rawProducts = productsResponse as List;
       _rawTransactions = txsResponse as List;
-      _rawTransactionItems = txItemsResponse as List;
+
+      // Extract transaction items from transactions response
+      final List<dynamic> txItems = [];
+      for (final tx in _rawTransactions) {
+        final items = tx['transaction_items'] as List? ?? [];
+        for (final item in items) {
+          txItems.add({
+            'quantity': item['quantity'],
+            'created_at': tx['created_at'] ?? item['created_at'],
+          });
+        }
+      }
+      _rawTransactionItems = txItems;
 
       _calculateFilteredStats();
     } catch (e) {
@@ -190,7 +212,7 @@ class _DashboardPageState extends State<DashboardPage> {
     int outOfStock = 0;
     int lowStock = 0;
     for (final p in _rawProducts) {
-      final stock = (p['stock'] as num?)?.toInt() ?? 0;
+      final stock = (p['qty_available'] as num?)?.toInt() ?? (p['stock'] as num?)?.toInt() ?? 0;
       if (stock == 0) {
         outOfStock++;
       } else if (stock <= 5) {
