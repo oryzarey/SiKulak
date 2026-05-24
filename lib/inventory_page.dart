@@ -5,17 +5,18 @@ import 'main.dart';
 import 'models.dart';
 import 'cart_manager.dart';
 import 'widgets/navbar.dart';
+import 'edit_item_page.dart';
 
-class SearchResultsPage extends StatefulWidget {
+class InventoryPage extends StatefulWidget {
   final String? initialQuery;
 
-  const SearchResultsPage({super.key, this.initialQuery});
+  const InventoryPage({super.key, this.initialQuery});
 
   @override
-  State<SearchResultsPage> createState() => _SearchResultsPageState();
+  State<InventoryPage> createState() => _InventoryPageState();
 }
 
-class _SearchResultsPageState extends State<SearchResultsPage> {
+class _InventoryPageState extends State<InventoryPage> {
   late TextEditingController _searchController;
 
   List<Product> _products = [];
@@ -691,7 +692,18 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
               const SizedBox(height: 8),
               GestureDetector(
                 onTap: () {
-                  _showEditStockDialog(product);
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => EditItemPage(
+                        product: product,
+                        onSaved: () {
+                          _fetchAllProducts();
+                          _fetchTransactions();
+                        },
+                      ),
+                    ),
+                  );
                 },
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -715,120 +727,7 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
     );
   }
 
-  // ── Edit stock dialog ──────────────────────────────────────
-  void _showEditStockDialog(Product product) {
-    final stockController =
-        TextEditingController(text: product.stock.toString());
-    final priceController =
-        TextEditingController(text: product.price.toStringAsFixed(0));
 
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20)),
-        title: Text('Edit ${product.name}',
-            style: const TextStyle(
-                fontSize: 18, fontWeight: FontWeight.bold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: stockController,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                labelText: 'Jumlah Stock',
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: priceController,
-              keyboardType: TextInputType.number,
-              decoration: InputDecoration(
-                labelText: 'Harga (Rp)',
-                border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12)),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Batal'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final newStock =
-                  int.tryParse(stockController.text) ?? product.stock;
-              final newPrice = double.tryParse(priceController.text) ??
-                  product.price;
-
-              try {
-                await supabase.from('inventories').update({
-                  'qty_available': newStock,
-                  'selling_price': newPrice,
-                }).eq('id', product.id);
-
-                if (!ctx.mounted) return;
-                Navigator.pop(ctx);
-                _fetchAllProducts();
-
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                        '${product.name} berhasil diupdate!',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                            fontSize: 12, color: Colors.white)),
-                    backgroundColor:
-                        Colors.green.shade900.withValues(alpha: 0.8),
-                    elevation: 0,
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30)),
-                    margin: const EdgeInsets.only(
-                        bottom: 95, left: 40, right: 40),
-                    duration: const Duration(seconds: 2),
-                  ),
-                );
-              } catch (e) {
-                if (!ctx.mounted) return;
-                Navigator.pop(ctx);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Gagal update: $e',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                            fontSize: 12, color: Colors.white)),
-                    backgroundColor:
-                        Colors.red.shade900.withValues(alpha: 0.8),
-                    elevation: 0,
-                    behavior: SnackBarBehavior.floating,
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(30)),
-                    margin: const EdgeInsets.only(
-                        bottom: 95, left: 40, right: 40),
-                    duration: const Duration(seconds: 3),
-                  ),
-                );
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFF2979FF),
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12)),
-            ),
-            child: const Text('Simpan'),
-          ),
-        ],
-      ),
-    );
-  }
 
   // ── Sales history statistics & aggregation ─────────────────
   Map<String, dynamic> _computeSalesStats() {
@@ -1167,7 +1066,7 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
           // Edit Button on right
           GestureDetector(
             onTap: () {
-              // Create a dummy Product object to reuse the edit stock dialog
+              // Create a dummy Product object to navigate to EditItemPage
               final dummyProduct = Product(
                 id: id,
                 categoryId: '',
@@ -1179,7 +1078,18 @@ class _SearchResultsPageState extends State<SearchResultsPage> {
                 rating: 4.5,
                 imageUrl: imageUrl,
               );
-              _showEditStockDialog(dummyProduct);
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => EditItemPage(
+                    product: dummyProduct,
+                    onSaved: () {
+                      _fetchAllProducts();
+                      _fetchTransactions();
+                    },
+                  ),
+                ),
+              );
             },
             child: Row(
               mainAxisSize: MainAxisSize.min,
