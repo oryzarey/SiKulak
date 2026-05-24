@@ -4,11 +4,12 @@ import 'package:flutter/material.dart';
 import 'main.dart';
 import 'models.dart';
 import 'cart_manager.dart';
-import 'search_results_page.dart';
+import 'inventory_page.dart';
 import 'dashboard_page.dart';
 import 'widgets/navbar.dart';
 import 'notification_service.dart';
 import 'product_detail_page.dart';
+import 'product_search_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -506,7 +507,7 @@ class _HomePageState extends State<HomePage> {
                     setState(() => _selectedNavItem = 1);
                     Navigator.of(context)
                         .push(MaterialPageRoute(
-                            builder: (_) => const SearchResultsPage()))
+                            builder: (_) => const InventoryPage()))
                         .then((_) {
                       if (mounted) setState(() => _selectedNavItem = 0);
                     });
@@ -831,7 +832,7 @@ class _HomePageState extends State<HomePage> {
                 onTap: () {
                   Navigator.of(context)
                       .push(MaterialPageRoute(
-                          builder: (_) => const SearchResultsPage()))
+                          builder: (_) => const ProductSearchPage()))
                       .then((_) => setState(() {}));
                 },
                 child: Container(
@@ -947,7 +948,7 @@ class _HomePageState extends State<HomePage> {
                                 Navigator.of(context)
                                     .push(MaterialPageRoute(
                                         builder: (_) =>
-                                            const SearchResultsPage()))
+                                            const InventoryPage()))
                                     .then((_) => setState(() {}));
                               },
                               style: ElevatedButton.styleFrom(
@@ -1113,7 +1114,7 @@ class _HomePageState extends State<HomePage> {
             Navigator.of(context)
                 .push(PageRouteBuilder(
                   pageBuilder: (_, __, ___) =>
-                      const SearchResultsPage(),
+                      const InventoryPage(),
                   transitionDuration: Duration.zero,
                   reverseTransitionDuration: Duration.zero,
                 ))
