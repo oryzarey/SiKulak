@@ -1,9 +1,8 @@
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:image_cropper/image_cropper.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../main.dart';
 
 class ProfileImageUploadPage extends StatefulWidget {
   final XFile imageFile;
@@ -18,52 +17,44 @@ class ProfileImageUploadPage extends StatefulWidget {
 }
 
 class _ProfileImageUploadPageState extends State<ProfileImageUploadPage> {
-  File? _croppedImage;
+  Uint8List? _imageBytes;
   bool _isUploading = false;
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _cropImage();
+    _loadImage();
   }
 
-  Future<void> _cropImage() async {
-    final CroppedFile? croppedFile = await ImageCropper().cropImage(
-      sourcePath: widget.imageFile.path,
-      aspectRatio: const CropAspectRatio(ratioX: 1, ratioY: 1),
-      uiSettings: [
-        AndroidUiSettings(
-          toolbarTitle: 'Crop Image',
-          toolbarColor: const Color(0xFF2979FF),
-          toolbarWidgetColor: Colors.white,
-          initAspectRatio: CropAspectRatioPreset.square,
-          lockAspectRatio: true,
-        ),
-        IOSUiSettings(
-          title: 'Crop Image',
-          minimumAspectRatio: 1.0,
-        ),
-      ],
-    );
-
-    if (croppedFile != null) {
+  Future<void> _loadImage() async {
+    try {
+      // Read image as bytes (works on all platforms)
+      final bytes = await widget.imageFile.readAsBytes();
       setState(() {
-        _croppedImage = File(croppedFile.path);
+        _imageBytes = bytes;
+        _isLoading = false;
       });
-    } else {
+    } catch (e) {
+      print('Error loading image: $e');
+      setState(() => _isLoading = false);
       if (mounted) {
-        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading image: $e')),
+        );
       }
     }
   }
 
   Future<void> _uploadImage() async {
-    if (_croppedImage == null) return;
+    if (_imageBytes == null) return;
 
     setState(() => _isUploading = true);
 
     try {
+      final supabase = Supabase.instance.client; // Get supabase instance
       final userId = supabase.auth.currentUser?.id;
+      
       if (userId == null) {
         throw Exception('User not authenticated');
       }
@@ -71,9 +62,10 @@ class _ProfileImageUploadPageState extends State<ProfileImageUploadPage> {
       final fileName = 'avatar_$userId.jpg';
       final filePath = 'avatars/$userId/$fileName';
 
-      await supabase.storage.from('profiles').upload(
+      // For web and mobile, upload bytes
+      await supabase.storage.from('profiles').uploadBinary(
             filePath,
-            _croppedImage!,
+            _imageBytes!,
             fileOptions: const FileOptions(upsert: true),
           );
 
@@ -103,7 +95,6 @@ class _ProfileImageUploadPageState extends State<ProfileImageUploadPage> {
       backgroundColor: const Color(0xFF2979FF),
       body: Column(
         children: [
-          // Header
           Padding(
             padding: const EdgeInsets.only(top: 60, bottom: 40),
             child: Text(
@@ -111,11 +102,9 @@ class _ProfileImageUploadPageState extends State<ProfileImageUploadPage> {
               style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
-              ),
+                  ),
             ),
           ),
-
-          // Image preview with crop grid
           Expanded(
             child: Container(
               margin: const EdgeInsets.symmetric(horizontal: 30),
@@ -123,49 +112,22 @@ class _ProfileImageUploadPageState extends State<ProfileImageUploadPage> {
                 color: Colors.grey[300],
                 borderRadius: BorderRadius.circular(20),
               ),
-              child: Stack(
-                children: [
-                  if (_croppedImage != null)
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(20),
-                      child: Image.file(
-                        _croppedImage!,
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                        height: double.infinity,
-                      ),
-                    )
-                  else if (widget.imageFile.path.isNotEmpty)
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(20),
-                      child: Image.file(
-                        File(widget.imageFile.path),
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                        height: double.infinity,
-                      ),
-                    )
-                  else
-                    Center(
-                      child: CircularProgressIndicator(
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          const Color(0xFF2979FF).withValues(alpha: 0.7),
-                        ),
-                      ),
-                    ),
-                  // Grid overlay
-                  CustomPaint(
-                    painter: GridPainter(),
-                    size: Size.infinite,
-                  ),
-                ],
-              ),
+              child: _isLoading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _imageBytes != null
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(20),
+                          child: Image.memory(
+                            _imageBytes!,
+                            fit: BoxFit.cover,
+                            width: double.infinity,
+                            height: double.infinity,
+                          ),
+                        )
+                      : const Center(child: Text('No image selected')),
             ),
           ),
-
           const SizedBox(height: 40),
-
-          // Upload button
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 30),
             child: SizedBox(
@@ -201,10 +163,7 @@ class _ProfileImageUploadPageState extends State<ProfileImageUploadPage> {
               ),
             ),
           ),
-
           const SizedBox(height: 16),
-
-          // Cancel link
           TextButton(
             onPressed: _isUploading ? null : () => Navigator.pop(context),
             child: const Text(
@@ -216,34 +175,9 @@ class _ProfileImageUploadPageState extends State<ProfileImageUploadPage> {
               ),
             ),
           ),
-
           const SizedBox(height: 40),
         ],
       ),
     );
   }
-}
-
-class GridPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.3)
-      ..strokeWidth = 1;
-
-    // Draw vertical lines
-    for (int i = 1; i < 3; i++) {
-      final x = size.width * i / 3;
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), paint);
-    }
-
-    // Draw horizontal lines
-    for (int i = 1; i < 3; i++) {
-      final y = size.height * i / 3;
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), paint);
-    }
-  }
-
-  @override
-  bool shouldRepaint(GridPainter oldDelegate) => false;
 }

@@ -286,7 +286,7 @@ class _ProfilePageState extends State<ProfilePage> {
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  // Name header
+                                  // Name and email header
                                   Center(
                                     child: Column(
                                       children: [
@@ -294,11 +294,20 @@ class _ProfilePageState extends State<ProfilePage> {
                                           _profile!.fullName,
                                           style: Theme.of(context)
                                               .textTheme
-                                              .titleLarge 
+                                              .titleLarge
                                               ?.copyWith(
                                                 color: const Color(0xFF2979FF),
                                                 fontWeight: FontWeight.bold,
                                               ),
+                                          textAlign: TextAlign.center,
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          supabase.auth.currentUser?.email ?? '',
+                                          style: TextStyle(
+                                            color: Colors.grey[600],
+                                            fontSize: 14,
+                                          ),
                                           textAlign: TextAlign.center,
                                         ),
                                       ],
@@ -336,6 +345,16 @@ class _ProfilePageState extends State<ProfilePage> {
                                     value: _profile!.phoneNumber ?? '-',
                                   ),
                                   const SizedBox(height: 12),
+
+                                  // Alamat Email
+                                  _buildProfileField(
+                                    context,
+                                    icon: Icons.email,
+                                    label: 'Alamat email',
+                                    value:
+                                        supabase.auth.currentUser?.email ?? '',
+                                  ),
+                                  const SizedBox(height: 24),
 
                                   // Settings section
                                   Text(
