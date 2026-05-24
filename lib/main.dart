@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'welcome_page.dart';
 import 'splash_page.dart';
 import 'inventory_page.dart';
+import 'profile_page.dart';
 import 'notification_service.dart';
 
 Future<void> main() async {
@@ -40,6 +41,7 @@ class MyApp extends StatelessWidget {
       routes: {
         '/welcome': (context) => const WelcomePage(),
         '/inventory': (context) => const InventoryPage(),
+        '/profile': (context) => const ProfilePage(),
       },
     );
   }

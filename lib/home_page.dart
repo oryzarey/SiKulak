@@ -7,6 +7,7 @@ import 'cart_manager.dart';
 import 'inventory_page.dart';
 import 'dashboard_page.dart';
 import 'widgets/navbar.dart';
+import 'profile_page.dart';
 import 'notification_service.dart';
 import 'product_detail_page.dart';
 import 'product_search_page.dart';
@@ -1138,8 +1139,18 @@ class _HomePageState extends State<HomePage> {
             // Show cart modal
             _showCartModal(context);
           } else {
-            // index 4 (Profile) — placeholder
-            setState(() => _selectedNavItem = index);
+            // index 4 (Profile)
+            setState(() => _selectedNavItem = 4);
+            Navigator.of(context)
+                .push(PageRouteBuilder(
+                  pageBuilder: (_, __, ___) =>
+                      const ProfilePage(),
+                  transitionDuration: Duration.zero,
+                  reverseTransitionDuration: Duration.zero,
+                ))
+                .then((_) {
+              if (mounted) setState(() => _selectedNavItem = 0);
+            });
           }
         },
       ),
