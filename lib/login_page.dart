@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'main.dart';
 import 'register_page.dart';
 import 'home_page.dart';
+import 'forgot_password_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -334,6 +335,32 @@ class _LoginPageState extends State<LoginPage>
                                       ),
                                     ),
                                   ],
+                                ),
+                              ),
+                            ),
+
+                            const SizedBox(height: 12),
+
+                            // ── Forgot Password Link ───────────────────
+                            Center(
+                              child: GestureDetector(
+                                onTap: () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => const ForgotPasswordPage(),
+                                    ),
+                                  );
+                                },
+                                child: const Text(
+                                  'Lupa kata sandi',
+                                  style: TextStyle(
+                                    fontFamily: 'Poppins',
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF2979FF),
+                                    decoration: TextDecoration.underline,
+                                    decorationColor: Color(0xFF2979FF),
+                                  ),
                                 ),
                               ),
                             ),
