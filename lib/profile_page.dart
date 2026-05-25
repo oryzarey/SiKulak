@@ -18,7 +18,7 @@ class _ProfilePageState extends State<ProfilePage> {
   UserProfile? _profile;
   bool _isLoading = true;
   String? _errorMessage;
-  int _selectedNavItem = 4; // Profile tab
+  final int _selectedNavItem = 4; // Profile tab
 
   @override
   void initState() {
@@ -81,6 +81,7 @@ class _ProfilePageState extends State<ProfilePage> {
 
     if (result == true && mounted) {
       await _loadUserProfile();
+      if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Profile picture updated successfully')),
       );
@@ -125,14 +126,167 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
           TextButton(
             onPressed: () async {
+              Navigator.pop(context);
               await supabase.auth.signOut();
-              if (mounted) {
-                Navigator.pushReplacementNamed(context, '/welcome');
-              }
             },
             child: const Text('Logout'),
           ),
         ],
+      ),
+    );
+  }
+
+  void _showEditFieldSheet({
+    required String title,
+    required String initialValue,
+    required String fieldName,
+    TextInputType keyboardType = TextInputType.text,
+    String? Function(String?)? validator,
+    required Future<void> Function(String) onSave,
+  }) {
+    final controller = TextEditingController(text: initialValue);
+    final formKey = GlobalKey<FormState>();
+    bool isSaving = false;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setModalState) => Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(context).viewInsets.bottom,
+          ),
+          child: Container(
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.only(
+                topLeft: Radius.circular(24),
+                topRight: Radius.circular(24),
+              ),
+            ),
+            padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Center(
+                    child: Container(
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.grey[300],
+                        borderRadius: BorderRadius.circular(2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Text(
+                    'Ubah $title',
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF2979FF),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: controller,
+                    keyboardType: keyboardType,
+                    autofocus: true,
+                    style: const TextStyle(fontSize: 14, color: Colors.black87),
+                    validator: validator ?? (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return '$title tidak boleh kosong';
+                      }
+                      return null;
+                    },
+                    decoration: InputDecoration(
+                      hintText: 'Masukkan $title baru',
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: BorderSide(color: Colors.grey[300]!),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Color(0xFF2979FF), width: 2),
+                      ),
+                      errorBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Colors.red),
+                      ),
+                      focusedErrorBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                        borderSide: const BorderSide(color: Colors.red, width: 2),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: isSaving ? null : () => Navigator.pop(context),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                            side: BorderSide(color: Colors.grey[300]!),
+                          ),
+                          child: const Text('Batal', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: isSaving
+                              ? null
+                              : () async {
+                                  if (!formKey.currentState!.validate()) return;
+                                  setModalState(() => isSaving = true);
+                                  try {
+                                    final value = controller.text.trim();
+                                    await onSave(value);
+                                    if (context.mounted) {
+                                      Navigator.pop(context);
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text('$title berhasil diperbarui')),
+                                      );
+                                    }
+                                  } catch (e) {
+                                    setModalState(() => isSaving = false);
+                                    if (context.mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text('Gagal memperbarui $title: $e')),
+                                      );
+                                    }
+                                  }
+                                },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color(0xFF2979FF),
+                            foregroundColor: Colors.white,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          child: isSaving
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                                )
+                              : const Text('Simpan', style: TextStyle(fontWeight: FontWeight.bold)),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -145,12 +299,8 @@ class _ProfilePageState extends State<ProfilePage> {
       bottomNavigationBar: CustomNavBar(
         selectedIndex: _selectedNavItem,
         onItemTapped: (index) {
-          if (index != 4) {
-            // Navigate away from profile
-            if (index == 0) {
-              Navigator.pushReplacementNamed(context, '/inventory');
-            }
-          }
+          if (index == 4) return;
+          Navigator.of(context).pop(index);
         },
       ),
       body: _isLoading
@@ -219,7 +369,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                                 _profile!.avatarUrl!.isNotEmpty
                                             ? ClipOval(
                                                 child: Image.network(
-                                                  _profile!.avatarUrl!,
+                                                  '${_profile!.avatarUrl}?t=${_profile!.updatedAt.millisecondsSinceEpoch}',
                                                   fit: BoxFit.cover,
                                                   errorBuilder:
                                                       (context, error, stackTrace) {
@@ -334,6 +484,20 @@ class _ProfilePageState extends State<ProfilePage> {
                                     icon: Icons.person,
                                     label: 'Nama anda',
                                     value: _profile!.fullName,
+                                    onTap: () => _showEditFieldSheet(
+                                      title: 'Nama Anda',
+                                      initialValue: _profile!.fullName,
+                                      fieldName: 'full_name',
+                                      onSave: (val) async {
+                                        final userId = supabase.auth.currentUser?.id;
+                                        if (userId == null) return;
+                                        await supabase.from('profiles').update({
+                                          'full_name': val,
+                                          'updated_at': DateTime.now().toIso8601String(),
+                                        }).eq('id', userId);
+                                        await _loadUserProfile();
+                                      },
+                                    ),
                                   ),
                                   const SizedBox(height: 12),
 
@@ -343,6 +507,21 @@ class _ProfilePageState extends State<ProfilePage> {
                                     icon: Icons.phone,
                                     label: 'Nomor telepon',
                                     value: _profile!.phoneNumber ?? '-',
+                                    onTap: () => _showEditFieldSheet(
+                                      title: 'Nomor Telepon',
+                                      initialValue: _profile!.phoneNumber ?? '',
+                                      fieldName: 'phone_number',
+                                      keyboardType: TextInputType.phone,
+                                      onSave: (val) async {
+                                        final userId = supabase.auth.currentUser?.id;
+                                        if (userId == null) return;
+                                        await supabase.from('profiles').update({
+                                          'phone_number': val,
+                                          'updated_at': DateTime.now().toIso8601String(),
+                                        }).eq('id', userId);
+                                        await _loadUserProfile();
+                                      },
+                                    ),
                                   ),
                                   const SizedBox(height: 12),
 
@@ -353,6 +532,25 @@ class _ProfilePageState extends State<ProfilePage> {
                                     label: 'Alamat email',
                                     value:
                                         supabase.auth.currentUser?.email ?? '',
+                                    onTap: () => _showEditFieldSheet(
+                                      title: 'Alamat Email',
+                                      initialValue: supabase.auth.currentUser?.email ?? '',
+                                      fieldName: 'email',
+                                      keyboardType: TextInputType.emailAddress,
+                                      validator: (val) {
+                                        if (val == null || val.trim().isEmpty) {
+                                          return 'Alamat email tidak boleh kosong';
+                                        }
+                                        if (!val.contains('@')) {
+                                          return 'Alamat email tidak valid';
+                                        }
+                                        return null;
+                                      },
+                                      onSave: (val) async {
+                                        await supabase.auth.updateUser(UserAttributes(email: val));
+                                        await _loadUserProfile();
+                                      },
+                                    ),
                                   ),
                                   const SizedBox(height: 24),
 
@@ -372,13 +570,7 @@ class _ProfilePageState extends State<ProfilePage> {
                                   // Kata Sandi
                                   GestureDetector(
                                     onTap: () {
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        const SnackBar(
-                                          content:
-                                              Text('Password change not yet implemented'),
-                                        ),
-                                      );
+                                      Navigator.of(context).pushNamed('/change-password');
                                     },
                                     child: Container(
                                       padding: const EdgeInsets.all(16),
@@ -485,28 +677,31 @@ class _ProfilePageState extends State<ProfilePage> {
     required IconData icon,
     required String label,
     required String value,
+    required VoidCallback onTap,
   }) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        border: Border.all(color: Colors.grey[300]!),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: Colors.grey[200],
-              borderRadius: BorderRadius.circular(8),
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey[300]!),
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: Colors.grey[200],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                icon,
+                color: Colors.grey[600],
+                size: 20,
+              ),
             ),
-            child: Icon(
-              icon,
-              color: Colors.grey[600],
-              size: 20,
-            ),
-          ),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
@@ -537,6 +732,7 @@ class _ProfilePageState extends State<ProfilePage> {
           ),
         ],
       ),
-    );
-  }
+    ),
+  );
+}
 }
