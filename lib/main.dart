@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'welcome_page.dart';
 import 'splash_page.dart';
 import 'inventory_page.dart';
+import 'profile_page.dart';
 import 'login_page.dart';
 import 'forgot_password_page.dart';
 import 'change_password_page.dart';
@@ -86,6 +87,7 @@ class _MyAppState extends State<MyApp> {
         '/login': (context) => const LoginPage(),
         '/welcome': (context) => const WelcomePage(),
         '/inventory': (context) => const InventoryPage(),
+        '/profile': (context) => const ProfilePage(),
         '/forgot-password': (context) => const ForgotPasswordPage(),
         '/change-password': (context) => const ChangePasswordPage(),
       },

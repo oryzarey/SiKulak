@@ -109,3 +109,46 @@ class Category {
     );
   }
 }
+
+/// User profile from the profiles table in Supabase.
+class UserProfile {
+  final String id;
+  final String fullName;
+  final String? avatarUrl;
+  final String? phoneNumber;
+  final String? storeName;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  const UserProfile({
+    required this.id,
+    required this.fullName,
+    this.avatarUrl,
+    this.phoneNumber,
+    this.storeName,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  factory UserProfile.fromJson(Map<String, dynamic> json) {
+    return UserProfile(
+      id: (json['id'] ?? '') as String,
+      fullName: (json['full_name'] ?? '') as String,
+      avatarUrl: json['avatar_url'] as String?,
+      phoneNumber: json['phone_number'] as String?,
+      storeName: json['store_name'] as String?,
+      createdAt: DateTime.tryParse(json['created_at'] as String? ?? '') ?? DateTime.now(),
+      updatedAt: DateTime.tryParse(json['updated_at'] as String? ?? '') ?? DateTime.now(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'full_name': fullName,
+    'avatar_url': avatarUrl,
+    'phone_number': phoneNumber,
+    'store_name': storeName,
+    'created_at': createdAt.toIso8601String(),
+    'updated_at': updatedAt.toIso8601String(),
+  };
+}
