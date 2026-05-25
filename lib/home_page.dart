@@ -25,6 +25,7 @@ class _HomePageState extends State<HomePage> {
   final Set<String> _wishlistItems = {}; // local-only (no BE table)
   String? _selectedCategoryId; // null = "Semua Produk"
   int _selectedNavItem = 0;
+  String? _avatarUrl;
 
   List<Product> _products = [];
   List<Category> _categories = [];
@@ -139,20 +140,30 @@ class _HomePageState extends State<HomePage> {
 
       final data = await supabase
           .from('profiles')
-          .select('full_name')
+          .select('full_name, avatar_url, updated_at')
           .eq('id', userId)
           .maybeSingle();
 
       if (!mounted) return;
-      if (data != null && data['full_name'] != null) {
-        final raw = data['full_name'].toString();
+      if (data != null) {
+        final raw = (data['full_name'] ?? '').toString();
+        final avatar = data['avatar_url'] as String?;
+        final updatedAt = data['updated_at'] as String?;
         setState(() {
-          _userName = raw.length > 12 ? '${raw.substring(0, 12)}...' : raw;
+          if (raw.isNotEmpty) {
+            _userName = raw.length > 12 ? '${raw.substring(0, 12)}...' : raw;
+          }
+          if (avatar != null && avatar.isNotEmpty) {
+            _avatarUrl = '$avatar?t=${updatedAt ?? DateTime.now().millisecondsSinceEpoch}';
+          } else {
+            _avatarUrl = null;
+          }
         });
       } else {
         _setUserNameFromAuth();
       }
-    } catch (_) {
+    } catch (e, stack) {
+      debugPrint('[SiKulak] Error in _fetchProfile: $e\n$stack');
       _setUserNameFromAuth();
     }
   }
@@ -732,6 +743,74 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
+  void _handleTabSelection(int index) {
+    if (index == _selectedNavItem) return;
+    if (index == 0) {
+      if (mounted) {
+        setState(() {
+          _selectedNavItem = 0;
+        });
+        _fetchProfile();
+      }
+    } else if (index == 1) {
+      setState(() => _selectedNavItem = 1);
+      Navigator.of(context)
+          .push(PageRouteBuilder(
+            pageBuilder: (_, __, ___) => const InventoryPage(),
+            transitionDuration: Duration.zero,
+            reverseTransitionDuration: Duration.zero,
+          ))
+          .then((result) {
+        if (mounted) {
+          if (result is int) {
+            _handleTabSelection(result);
+          } else {
+            setState(() => _selectedNavItem = 0);
+            _fetchProfile();
+          }
+        }
+      });
+    } else if (index == 3) {
+      setState(() => _selectedNavItem = 3);
+      Navigator.of(context)
+          .push(PageRouteBuilder(
+            pageBuilder: (_, __, ___) => const DashboardPage(),
+            transitionDuration: Duration.zero,
+            reverseTransitionDuration: Duration.zero,
+          ))
+          .then((result) {
+        if (mounted) {
+          if (result is int) {
+            _handleTabSelection(result);
+          } else {
+            setState(() => _selectedNavItem = 0);
+            _fetchProfile();
+          }
+        }
+      });
+    } else if (index == 2) {
+      _showCartModal(context);
+    } else if (index == 4) {
+      setState(() => _selectedNavItem = 4);
+      Navigator.of(context)
+          .push(PageRouteBuilder(
+            pageBuilder: (_, __, ___) => const ProfilePage(),
+            transitionDuration: Duration.zero,
+            reverseTransitionDuration: Duration.zero,
+          ))
+          .then((result) {
+        if (mounted) {
+          if (result is int) {
+            _handleTabSelection(result);
+          } else {
+            setState(() => _selectedNavItem = 0);
+            _fetchProfile();
+          }
+        }
+      });
+    }
+  }
+
   // ── BUILD ──────────────────────────────────────────────────
   @override
   Widget build(BuildContext context) {
@@ -750,6 +829,87 @@ class _HomePageState extends State<HomePage> {
             pinned: true,
             toolbarHeight: 140,
             automaticallyImplyLeading: false,
+            titleSpacing: 0,
+            title: Container(
+              padding: const EdgeInsets.only(top: 15, left: 20, right: 20),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 56,
+                      child: GestureDetector(
+                        onTap: () => _handleTabSelection(4),
+                        child: _GlassContainer(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 14),
+                          borderRadius: BorderRadius.circular(30),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 36,
+                                height: 36,
+                                decoration: const BoxDecoration(
+                                  shape: BoxShape.circle,
+                                  color: Colors.white24,
+                                ),
+                                child: _avatarUrl != null && _avatarUrl!.isNotEmpty
+                                    ? ClipOval(
+                                        child: Image.network(
+                                          _avatarUrl!,
+                                          fit: BoxFit.cover,
+                                          errorBuilder: (context, error, stackTrace) {
+                                            return const Icon(Icons.person,
+                                                color: Colors.white, size: 22);
+                                          },
+                                        ),
+                                      )
+                                    : const Icon(Icons.person,
+                                        color: Colors.white, size: 22),
+                              ),
+                              const SizedBox(width: 10),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.start,
+                                  mainAxisAlignment:
+                                      MainAxisAlignment.center,
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Text('Selamat datang,',
+                                        style: TextStyle(
+                                            color: Colors.white70,
+                                            fontSize: 11)),
+                                    const SizedBox(height: 1),
+                                    Text(_userName,
+                                        style: const TextStyle(
+                                            color: Colors.white,
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14),
+                                        maxLines: 1,
+                                        overflow:
+                                            TextOverflow.ellipsis),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  SizedBox(
+                    width: 56,
+                    height: 56,
+                    child: _HeaderIcon(
+                      icon: Icons.notifications_none_outlined,
+                      onTap: () {},
+                    ),
+                  ),
+                ],
+              ),
+            ),
             flexibleSpace: ClipRRect(
               borderRadius: const BorderRadius.vertical(
                   bottom: Radius.circular(20)),
@@ -758,67 +918,6 @@ class _HomePageState extends State<HomePage> {
                 child: Container(
                   color:
                       const Color(0xFF2979FF).withValues(alpha: 0.8),
-                  padding: const EdgeInsets.only(
-                      top: 55, left: 20, right: 20, bottom: 20),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Expanded(
-                        child: SizedBox(
-                          height: 56,
-                          child: _GlassContainer(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 14),
-                            borderRadius: BorderRadius.circular(30),
-                            child: Row(
-                              children: [
-                                const CircleAvatar(
-                                  radius: 18,
-                                  backgroundColor: Colors.white24,
-                                  child: Icon(Icons.person,
-                                      color: Colors.white, size: 22),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.center,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Text('Selamat datang,',
-                                          style: TextStyle(
-                                              color: Colors.white70,
-                                              fontSize: 11)),
-                                      const SizedBox(height: 1),
-                                      Text(_userName,
-                                          style: const TextStyle(
-                                              color: Colors.white,
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 14),
-                                          maxLines: 1,
-                                          overflow:
-                                              TextOverflow.ellipsis),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      SizedBox(
-                        width: 56,
-                        height: 56,
-                        child: _HeaderIcon(
-                          icon: Icons.notifications_none_outlined,
-                          onTap: () {},
-                        ),
-                      ),
-                    ],
-                  ),
                 ),
               ),
             ),
@@ -1107,52 +1206,7 @@ class _HomePageState extends State<HomePage> {
       // ─────────── NAVBAR ───────────
       bottomNavigationBar: CustomNavBar(
         selectedIndex: _selectedNavItem,
-        onItemTapped: (index) {
-          if (index == _selectedNavItem) return;
-          if (index == 1) {
-            // Inventory/Search tab
-            setState(() => _selectedNavItem = 1);
-            Navigator.of(context)
-                .push(PageRouteBuilder(
-                  pageBuilder: (_, __, ___) =>
-                      const InventoryPage(),
-                  transitionDuration: Duration.zero,
-                  reverseTransitionDuration: Duration.zero,
-                ))
-                .then((_) {
-              if (mounted) setState(() => _selectedNavItem = 0);
-            });
-          } else if (index == 3) {
-            // Dashboard/Analytics tab
-            setState(() => _selectedNavItem = 3);
-            Navigator.of(context)
-                .push(PageRouteBuilder(
-                  pageBuilder: (_, __, ___) =>
-                      const DashboardPage(),
-                  transitionDuration: Duration.zero,
-                  reverseTransitionDuration: Duration.zero,
-                ))
-                .then((_) {
-              if (mounted) setState(() => _selectedNavItem = 0);
-            });
-          } else if (index == 2) {
-            // Show cart modal
-            _showCartModal(context);
-          } else {
-            // index 4 (Profile)
-            setState(() => _selectedNavItem = 4);
-            Navigator.of(context)
-                .push(PageRouteBuilder(
-                  pageBuilder: (_, __, ___) =>
-                      const ProfilePage(),
-                  transitionDuration: Duration.zero,
-                  reverseTransitionDuration: Duration.zero,
-                ))
-                .then((_) {
-              if (mounted) setState(() => _selectedNavItem = 0);
-            });
-          }
-        },
+        onItemTapped: _handleTabSelection,
       ),
     );
   }

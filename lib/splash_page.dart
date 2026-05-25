@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import 'home_page.dart';
 
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
@@ -31,6 +33,21 @@ class _SplashPageState extends State<SplashPage> with SingleTickerProviderStateM
     );
 
     _animationController.forward();
+
+    // Navigate to HomePage or WelcomePage after animation
+    Future.delayed(const Duration(milliseconds: 2500), () {
+      if (mounted) {
+        final session = Supabase.instance.client.auth.currentSession;
+        if (session != null) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const HomePage()),
+            (route) => false,
+          );
+        } else {
+          Navigator.of(context).pushReplacementNamed('/welcome');
+        }
+      }
+    });
   }
 
   @override

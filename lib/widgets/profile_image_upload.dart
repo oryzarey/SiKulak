@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -36,7 +35,7 @@ class _ProfileImageUploadPageState extends State<ProfileImageUploadPage> {
         _isLoading = false;
       });
     } catch (e) {
-      print('Error loading image: $e');
+      debugPrint('Error loading image: $e');
       setState(() => _isLoading = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -60,7 +59,7 @@ class _ProfileImageUploadPageState extends State<ProfileImageUploadPage> {
       }
 
       final fileName = 'avatar_$userId.jpg';
-      final filePath = 'avatars/$userId/$fileName';
+      final filePath = '$userId/$fileName';
 
       // For web and mobile, upload bytes
       await supabase.storage.from('profiles').uploadBinary(
