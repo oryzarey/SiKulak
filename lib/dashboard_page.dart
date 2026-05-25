@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'widgets/navbar.dart';
 import 'main.dart';
+import 'models.dart';
 import 'cart_manager.dart';
 
 class DashboardPage extends StatefulWidget {
@@ -55,8 +56,22 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   void initState() {
     super.initState();
+    final now = DateTime.now();
+    _selectedYear = now.year.toString();
+    _selectedMonth = _getMonthNameIndonesian(now.month);
     _dates = ['Semua Tanggal', ...List.generate(31, (index) => (index + 1).toString())];
     _loadData();
+  }
+
+  String _getMonthNameIndonesian(int month) {
+    const months = [
+      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+    ];
+    if (month >= 1 && month <= 12) {
+      return months[month - 1];
+    }
+    return 'Januari';
   }
 
   Future<void> _loadData() async {
@@ -77,15 +92,17 @@ class _DashboardPageState extends State<DashboardPage> {
 
       final data = await supabase
           .from('profiles')
-          .select('full_name')
+          .select('full_name, avatar_url, updated_at')
           .eq('id', user.id)
           .maybeSingle();
 
       if (!mounted) return;
-      if (data != null && data['full_name'] != null) {
-        final raw = data['full_name'].toString();
+      if (data != null) {
+        final raw = (data['full_name'] ?? '').toString();
         setState(() {
-          _userName = raw.length > 12 ? '${raw.substring(0, 12)}...' : raw;
+          if (raw.isNotEmpty) {
+            _userName = raw.length > 12 ? '${raw.substring(0, 12)}...' : raw;
+          }
         });
       } else {
         _setUserNameFromAuth();
@@ -93,6 +110,16 @@ class _DashboardPageState extends State<DashboardPage> {
     } catch (_) {
       _setUserNameFromAuth();
     }
+  }
+
+  Stream<UserProfile?> _profileStream() {
+    final user = supabase.auth.currentUser;
+    if (user == null) return const Stream.empty();
+    return supabase
+        .from('profiles')
+        .stream(primaryKey: ['id'])
+        .eq('id', user.id)
+        .map((data) => data.isNotEmpty ? UserProfile.fromJson(data.first) : null);
   }
 
   void _setUserNameFromAuth() {
@@ -172,41 +199,6 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   void _calculateFilteredStats() {
-    if (_rawProducts.isEmpty && _rawTransactions.isEmpty && _rawTransactionItems.isEmpty) {
-      if (mounted) {
-        setState(() {
-          _totalItemsCount = 100;
-          _outOfStockCount = 4;
-          _lowStockCount = 4;
-          _itemsSoldCount = 60;
-          _totalProfit = 15000000.0;
-          _chartSpots = const [
-            FlSpot(0, 1),
-            FlSpot(1, 2.5),
-            FlSpot(2, 1.8),
-            FlSpot(3, 3.5),
-            FlSpot(4, 3.2),
-            FlSpot(5, 4.8),
-            FlSpot(6, 6),
-          ];
-          _chartMaxY = 6.0;
-          _barMaxY = 20.0;
-          _barGroups = List.generate(7, (i) {
-            final color = i == 5 ? Colors.amber : (i == 6 ? Colors.green : Colors.blue);
-            return BarChartGroupData(x: i, barRods: [
-              BarChartRodData(
-                toY: [8.0, 10.0, 14.0, 15.0, 13.0, 10.0, 18.0][i],
-                color: color,
-                width: 12,
-                borderRadius: BorderRadius.circular(4),
-              )
-            ]);
-          });
-        });
-      }
-      return;
-    }
-
     // 1. Calculate overall metrics from products
     int totalItems = _rawProducts.length;
     int outOfStock = 0;
@@ -281,16 +273,8 @@ class _DashboardPageState extends State<DashboardPage> {
     List<FlSpot> spots = [];
     double chartMaxY = 6.0;
     if (maxSpotVal == 0.0) {
-      spots = const [
-        FlSpot(0, 1),
-        FlSpot(1, 2.5),
-        FlSpot(2, 1.8),
-        FlSpot(3, 3.5),
-        FlSpot(4, 3.2),
-        FlSpot(5, 4.8),
-        FlSpot(6, 6),
-      ];
-      chartMaxY = 6.0;
+      spots = List.generate(7, (i) => FlSpot(i.toDouble(), 0));
+      chartMaxY = 10.0;
     } else {
       spots = List.generate(7, (i) => FlSpot(i.toDouble(), spotsData[i]));
       chartMaxY = maxSpotVal * 1.2;
@@ -315,19 +299,17 @@ class _DashboardPageState extends State<DashboardPage> {
     List<BarChartGroupData> barGroups = [];
     double barMaxY = 20.0;
     if (maxSalesVal == 0.0) {
-      final mockY = [8.0, 10.0, 14.0, 15.0, 13.0, 10.0, 18.0];
       barGroups = List.generate(7, (i) {
-        final color = i == 5 ? Colors.amber : (i == 6 ? Colors.green : Colors.blue);
         return BarChartGroupData(x: i, barRods: [
           BarChartRodData(
-            toY: mockY[i],
-            color: color,
+            toY: 0.0,
+            color: Colors.blue,
             width: 12,
             borderRadius: BorderRadius.circular(4),
           )
         ]);
       });
-      barMaxY = 20.0;
+      barMaxY = 10.0;
     } else {
       int maxIndex = 0;
       double currentMax = -1.0;
@@ -443,57 +425,80 @@ class _DashboardPageState extends State<DashboardPage> {
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: _getCustomShadow(),
-                ),
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 70,
-                      height: 70,
+              child: GestureDetector(
+                onTap: () {
+                  Navigator.pop(context, 4);
+                },
+                child: StreamBuilder<UserProfile?>(
+                  stream: _profileStream(),
+                  builder: (context, snapshot) {
+                    final profile = snapshot.data;
+                    final userName = profile?.fullName ?? _userName;
+                    final avatarUrl = profile?.avatarUrl;
+
+                    return Container(
                       decoration: BoxDecoration(
-                        color: Colors.grey[200],
-                        shape: BoxShape.circle,
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(20),
+                        boxShadow: _getCustomShadow(),
                       ),
-                      child: Center(
-                        child: Icon(Icons.person, size: 40, color: Colors.grey[400]),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                      padding: const EdgeInsets.all(16),
+                      child: Row(
                         children: [
-                          Row(
-                            children: [
-                              Text(
-                                _userName,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF2979FF),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              const Icon(Icons.verified, color: Color(0xFF2979FF), size: 20),
-                            ],
+                          Container(
+                            width: 70,
+                            height: 70,
+                            decoration: BoxDecoration(
+                              color: Colors.grey[200],
+                              shape: BoxShape.circle,
+                            ),
+                            child: avatarUrl != null && avatarUrl.isNotEmpty
+                                ? ClipOval(
+                                    child: Image.network(
+                                      '$avatarUrl?t=${profile?.updatedAt.millisecondsSinceEpoch ?? DateTime.now().millisecondsSinceEpoch}',
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (context, error, stackTrace) {
+                                        return const Icon(Icons.person,
+                                            size: 40, color: Colors.grey);
+                                      },
+                                    ),
+                                  )
+                                : const Icon(Icons.person, size: 40, color: Colors.grey),
                           ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _userEmail,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey[600],
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Text(
+                                      userName,
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.bold,
+                                        color: Color(0xFF2979FF),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    const Icon(Icons.verified, color: Color(0xFF2979FF), size: 20),
+                                  ],
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  _userEmail,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: Colors.grey[600],
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ],
                       ),
-                    ),
-                  ],
+                    );
+                  }
                 ),
               ),
             ),
@@ -771,7 +776,7 @@ class _DashboardPageState extends State<DashboardPage> {
         onItemTapped: (index) {
           if (index == 3) return; // Already on dashboard
           // Pop back to Home for any other tab — Home handles all routing
-          Navigator.pop(context);
+          Navigator.pop(context, index);
         },
       ),
     );

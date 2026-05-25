@@ -24,7 +24,6 @@ class _InventoryPageState extends State<InventoryPage> {
   bool _initialLoad = true;
   Timer? _debounce;
   String _userName = 'User';
-  String? _avatarUrl;
 
   // Tab: 0 = Stock, 1 = Riwayat Penjualan
   int _selectedTab = 0;
@@ -77,16 +76,9 @@ class _InventoryPageState extends State<InventoryPage> {
       if (!mounted) return;
       if (data != null) {
         final raw = (data['full_name'] ?? '').toString();
-        final avatar = data['avatar_url'] as String?;
-        final updatedAt = data['updated_at'] as String?;
         setState(() {
           if (raw.isNotEmpty) {
             _userName = raw.length > 12 ? '${raw.substring(0, 12)}...' : raw;
-          }
-          if (avatar != null && avatar.isNotEmpty) {
-            _avatarUrl = '$avatar?t=${updatedAt ?? DateTime.now().millisecondsSinceEpoch}';
-          } else {
-            _avatarUrl = null;
           }
         });
       } else {
@@ -95,6 +87,16 @@ class _InventoryPageState extends State<InventoryPage> {
     } catch (_) {
       _setUserNameFromAuth();
     }
+  }
+
+  Stream<UserProfile?> _profileStream() {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return const Stream.empty();
+    return supabase
+        .from('profiles')
+        .stream(primaryKey: ['id'])
+        .eq('id', userId)
+        .map((data) => data.isNotEmpty ? UserProfile.fromJson(data.first) : null);
   }
 
   void _setUserNameFromAuth() {
@@ -289,87 +291,96 @@ class _InventoryPageState extends State<InventoryPage> {
             toolbarHeight: 140,
             automaticallyImplyLeading: false,
             titleSpacing: 0,
-            title: Container(
-              padding: const EdgeInsets.only(top: 15, left: 20, right: 20),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: SizedBox(
-                      height: 56,
-                      child: GestureDetector(
-                        onTap: () {
-                          Navigator.of(context).pop(4);
-                        },
-                        child: _GlassContainer(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 14),
-                          borderRadius: BorderRadius.circular(30),
-                          child: Row(
-                            children: [
-                              Container(
-                                width: 36,
-                                height: 36,
-                                decoration: const BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  color: Colors.white24,
-                                ),
-                                child: _avatarUrl != null && _avatarUrl!.isNotEmpty
-                                    ? ClipOval(
-                                        child: Image.network(
-                                          _avatarUrl!,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (context, error, stackTrace) {
-                                            return const Icon(Icons.person,
-                                                color: Colors.white, size: 22);
-                                          },
-                                        ),
-                                      )
-                                    : const Icon(Icons.person,
-                                        color: Colors.white, size: 22),
+            title: StreamBuilder<UserProfile?>(
+              stream: _profileStream(),
+              builder: (context, snapshot) {
+                final profile = snapshot.data;
+                final userName = profile?.fullName ?? _userName;
+                final avatarUrl = profile?.avatarUrl;
+
+                return Container(
+                  padding: const EdgeInsets.only(top: 15, left: 20, right: 20),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: SizedBox(
+                          height: 56,
+                          child: GestureDetector(
+                            onTap: () {
+                              Navigator.of(context).pop(4);
+                            },
+                            child: _GlassContainer(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14),
+                              borderRadius: BorderRadius.circular(30),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 36,
+                                    height: 36,
+                                    decoration: const BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: Colors.white24,
+                                    ),
+                                    child: avatarUrl != null && avatarUrl.isNotEmpty
+                                        ? ClipOval(
+                                            child: Image.network(
+                                              '$avatarUrl?t=${profile?.updatedAt.millisecondsSinceEpoch ?? DateTime.now().millisecondsSinceEpoch}',
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (context, error, stackTrace) {
+                                                return const Icon(Icons.person,
+                                                    color: Colors.white, size: 22);
+                                              },
+                                            ),
+                                          )
+                                        : const Icon(Icons.person,
+                                            color: Colors.white, size: 22),
+                                  ),
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Text('Selamat datang,',
+                                            style: TextStyle(
+                                                color: Colors.white70,
+                                                fontSize: 11)),
+                                        const SizedBox(height: 1),
+                                        Text(userName,
+                                            style: const TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 14),
+                                            maxLines: 1,
+                                            overflow:
+                                                TextOverflow.ellipsis),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
-                              const SizedBox(width: 10),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.start,
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.center,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    const Text('Selamat datang,',
-                                        style: TextStyle(
-                                            color: Colors.white70,
-                                            fontSize: 11)),
-                                    const SizedBox(height: 1),
-                                    Text(_userName,
-                                        style: const TextStyle(
-                                            color: Colors.white,
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 14),
-                                        maxLines: 1,
-                                        overflow:
-                                            TextOverflow.ellipsis),
-                                  ],
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
                         ),
                       ),
-                    ),
+                      const SizedBox(width: 12),
+                      SizedBox(
+                        width: 56,
+                        height: 56,
+                        child: _HeaderIcon(
+                          icon: Icons.notifications_none_outlined,
+                          onTap: () {},
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 12),
-                  SizedBox(
-                    width: 56,
-                    height: 56,
-                    child: _HeaderIcon(
-                      icon: Icons.notifications_none_outlined,
-                      onTap: () {},
-                    ),
-                  ),
-                ],
-              ),
+                );
+              }
             ),
             flexibleSpace: ClipRRect(
               borderRadius: const BorderRadius.vertical(
