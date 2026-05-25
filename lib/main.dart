@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'welcome_page.dart';
 import 'splash_page.dart';
+import 'home_page.dart';
 import 'inventory_page.dart';
 import 'profile_page.dart';
 import 'login_page.dart';
@@ -62,7 +63,7 @@ class _MyAppState extends State<MyApp> {
 
       if (event == AuthChangeEvent.signedIn) {
         // Double check we're not in password recovery state to be safe
-        _navigatorKey.currentState?.pushNamedAndRemoveUntil('/inventory', (route) => false);
+        _navigatorKey.currentState?.pushNamedAndRemoveUntil('/home', (route) => false);
       } else if (event == AuthChangeEvent.signedOut || (event == AuthChangeEvent.initialSession && session == null)) {
         _navigatorKey.currentState?.pushNamedAndRemoveUntil('/welcome', (route) => false);
       }
@@ -84,6 +85,7 @@ class _MyAppState extends State<MyApp> {
       ),
       home: const SplashPage(),
       routes: {
+        '/home': (context) => const HomePage(),
         '/login': (context) => const LoginPage(),
         '/welcome': (context) => const WelcomePage(),
         '/inventory': (context) => const InventoryPage(),
