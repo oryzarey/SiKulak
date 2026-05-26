@@ -5,6 +5,8 @@ import 'welcome_page.dart';
 import 'splash_page.dart';
 import 'home_page.dart';
 import 'inventory_page.dart';
+import 'pos_page.dart';
+import 'sales_checkout_page.dart';
 import 'profile_page.dart';
 import 'login_page.dart';
 import 'forgot_password_page.dart';
@@ -89,6 +91,8 @@ class _MyAppState extends State<MyApp> {
         '/login': (context) => const LoginPage(),
         '/welcome': (context) => const WelcomePage(),
         '/inventory': (context) => const InventoryPage(),
+        '/pos': (context) => const PosPage(),
+        '/checkout': (context) => const SalesCheckoutPage(),
         '/profile': (context) => const ProfilePage(),
         '/forgot-password': (context) => const ForgotPasswordPage(),
         '/change-password': (context) => const ChangePasswordPage(),

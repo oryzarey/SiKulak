@@ -775,7 +775,6 @@ class _DashboardPageState extends State<DashboardPage> {
         selectedIndex: 3, // 3 for Dashboard (grid_view icon)
         onItemTapped: (index) {
           if (index == 3) return; // Already on dashboard
-          // Pop back to Home for any other tab — Home handles all routing
           Navigator.pop(context, index);
         },
       ),

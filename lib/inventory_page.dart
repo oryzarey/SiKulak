@@ -529,12 +529,7 @@ class _InventoryPageState extends State<InventoryPage> {
         selectedIndex: 1, // Inventory tab is selected
         onItemTapped: (index) {
           if (index == 1) return; // Already on this page
-          if (index == 0) {
-            Navigator.of(context).pop();
-          } else {
-            // For other tabs, pop back to home and let home handle it
-            Navigator.of(context).pop();
-          }
+          Navigator.of(context).pop(index);
         },
       ),
     );
