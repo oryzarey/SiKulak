@@ -280,16 +280,16 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                             shape: BoxShape.circle,
                             boxShadow: [
                               BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.05),
-                                blurRadius: 6,
-                                offset: const Offset(0, 2),
+                                color: Colors.black.withValues(alpha: 0.06),
+                                blurRadius: 8,
+                                offset: const Offset(0, 4),
                               ),
                             ],
                           ),
                           child: Icon(
                             _isWishlisted ? Icons.favorite : Icons.favorite_border,
-                            color: Colors.red,
-                            size: 24,
+                            color: _isWishlisted ? const Color(0xFFEF4444) : const Color(0xFF94A3B8),
+                            size: 22,
                           ),
                         ),
                       ),
@@ -423,12 +423,12 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: cardBorderColor.withValues(alpha: 0.3), width: 1.5),
+        border: Border.all(color: cardBorderColor, width: 1.8),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.03),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 10,
+            offset: const Offset(0, 6),
           ),
         ],
       ),
@@ -526,11 +526,18 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                       children: [
                         // Grade Circle
                         Container(
-                          width: 32,
-                          height: 32,
+                          width: 34,
+                          height: 34,
                           decoration: BoxDecoration(
                             color: gradeTextColor,
                             shape: BoxShape.circle,
+                            boxShadow: [
+                              BoxShadow(
+                                color: gradeTextColor.withOpacity(0.18),
+                                blurRadius: 6,
+                                offset: const Offset(0, 3),
+                              ),
+                            ],
                           ),
                           child: Center(
                             child: Text(
@@ -538,23 +545,24 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontWeight: FontWeight.bold,
-                                fontSize: 15,
+                                fontSize: 14,
                               ),
                             ),
                           ),
                         ),
+                        const SizedBox(width: 8),
                         // Label container
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
                             color: gradeColor,
-                            borderRadius: const BorderRadius.horizontal(right: Radius.circular(20)),
+                            borderRadius: BorderRadius.circular(18),
                           ),
                           child: Text(
                             gradeLabel,
                             style: TextStyle(
                               color: gradeTextColor,
-                              fontSize: 11,
+                              fontSize: 12,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
