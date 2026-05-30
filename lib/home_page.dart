@@ -33,6 +33,7 @@ class _HomePageState extends State<HomePage> {
   bool _isLoading = true;
   String? _errorMessage;
   bool _lowStockChecked = false;
+  bool _lowStockDialogShownThisSession = false;
 
   // Promo carousel
   late final PageController _promoPageController;
@@ -278,18 +279,30 @@ class _HomePageState extends State<HomePage> {
       final userId = supabase.auth.currentUser?.id;
       if (userId == null) return;
 
-      // Fetch items with qty_available <= 5 (including stock = 0)
+      // Fetch items with qty_available <= 10 from the database.
       final data = await supabase
           .from('inventories')
           .select()
           .eq('user_id', userId)
-          .lte('qty_available', 5);
+          .lte('qty_available', 10)
+          .order('qty_available', ascending: true);
 
       if (!mounted) return;
-      final items =
-          (data as List).map((j) => InventoryItem.fromJson(j)).toList();
+
+      final items = (data as List)
+          .map((j) => InventoryItem.fromJson(j))
+          .toList()
+        ..sort((a, b) {
+          final aOut = a.qtyAvailable == 0;
+          final bOut = b.qtyAvailable == 0;
+          if (aOut != bOut) {
+            return aOut ? -1 : 1;
+          }
+          return a.qtyAvailable.compareTo(b.qtyAvailable);
+        });
+
       if (items.isNotEmpty) {
-        // Fire OS push notifications for ALL low-stock items
+        // Fire OS push notifications for all low-stock / out-of-stock items.
         for (final item in items) {
           NotificationService().showLowStockNotification(
             itemName: item.name,
@@ -297,11 +310,16 @@ class _HomePageState extends State<HomePage> {
           );
         }
 
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _showLowStockDialog(items);
-        });
+        if (!_lowStockDialogShownThisSession) {
+          _lowStockDialogShownThisSession = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _showLowStockDialog(items);
+          });
+        }
       }
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('[ERROR] _checkLowStock: $e');
+    }
   }
 
   // ── Checkout Cart ──────────────────────────────────────────
@@ -435,6 +453,9 @@ class _HomePageState extends State<HomePage> {
                   itemBuilder: (_, index) {
                     final item = items[index];
                     final isOut = item.qtyAvailable == 0;
+                    final label = isOut ? 'Habis' : 'Stok Menipis';
+                    final labelColor = isOut ? Colors.red[700] : Colors.orange[800];
+                    final labelBg = isOut ? Colors.red[100] : Colors.orange[100];
                     return Row(
                       children: [
                         // Product image from DB or fallback icon
@@ -477,19 +498,15 @@ class _HomePageState extends State<HomePage> {
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 8, vertical: 3),
                                     decoration: BoxDecoration(
-                                      color: isOut
-                                          ? Colors.red[100]
-                                          : Colors.orange[100],
+                                      color: labelBg,
                                       borderRadius: BorderRadius.circular(6),
                                     ),
                                     child: Text(
-                                      '${item.qtyAvailable} Sachet',
+                                      label,
                                       style: TextStyle(
                                         fontSize: 11,
                                         fontWeight: FontWeight.w600,
-                                        color: isOut
-                                            ? Colors.red[700]
-                                            : Colors.orange[800],
+                                        color: labelColor,
                                       ),
                                     ),
                                   ),
@@ -502,6 +519,14 @@ class _HomePageState extends State<HomePage> {
                                     color: isOut ? Colors.red : Colors.orange,
                                   ),
                                 ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${item.qtyAvailable} Sachet tersisa',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey[600],
+                                ),
                               ),
                             ],
                           ),
