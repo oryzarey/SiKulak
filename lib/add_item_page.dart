@@ -1,7 +1,8 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'main.dart';
-import 'models.dart';
-import 'cart_manager.dart';
 
 class AddItemPage extends StatefulWidget {
   final VoidCallback onSaved;
@@ -19,31 +20,33 @@ class _AddItemPageState extends State<AddItemPage> {
   final _formKey = GlobalKey<FormState>();
   
   final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _priceController = TextEditingController();
-  final TextEditingController _weightController = TextEditingController(text: '100');
+  final TextEditingController _sellingPriceController = TextEditingController(); // Harga Jual
+  final TextEditingController _capitalPriceController = TextEditingController(); // Harga Beli
   final TextEditingController _expDateController = TextEditingController();
+  final TextEditingController _quantityController = TextEditingController(); // New controller for quantity
   
   int _quantity = 1;
-  double _totalValue = 0.0;
   String? _imageUrl;
+  Uint8List? _selectedImageBytes;
   bool _isSaving = false;
+  bool _isUploadingImage = false;
   
   DateTime? _selectedDate;
 
   @override
-  void dispose() {
-    _nameController.dispose();
-    _priceController.dispose();
-    _weightController.dispose();
-    _expDateController.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    _quantityController.text = _quantity.toString();
   }
 
-  void _recalculateTotalValue() {
-    final price = double.tryParse(_priceController.text) ?? 0.0;
-    setState(() {
-      _totalValue = _quantity * price;
-    });
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _sellingPriceController.dispose();
+    _capitalPriceController.dispose();
+    _expDateController.dispose();
+    _quantityController.dispose();
+    super.dispose();
   }
 
   String _formatDate(DateTime date) {
@@ -78,6 +81,100 @@ class _AddItemPageState extends State<AddItemPage> {
     }
   }
 
+  void _updateQuantity(int newQuantity) {
+    if (newQuantity < 0) newQuantity = 0;
+    setState(() {
+      _quantity = newQuantity;
+      _quantityController.text = _quantity.toString();
+    });
+  }
+
+  void _onQuantityChanged(String value) {
+    if (value.isEmpty) {
+      _updateQuantity(0);
+      return;
+    }
+    
+    final int? parsedValue = int.tryParse(value);
+    if (parsedValue != null && parsedValue >= 0) {
+      _updateQuantity(parsedValue);
+    } else {
+      // If invalid input, revert to current quantity
+      _quantityController.text = _quantity.toString();
+    }
+  }
+
+  Future<void> _pickImage() async {
+    final ImagePicker picker = ImagePicker();
+    try {
+      final XFile? image = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 80,
+      );
+      
+      if (image != null) {
+        setState(() {
+          _isUploadingImage = true;
+        });
+        
+        final bytes = await image.readAsBytes();
+        final imageUrl = await _uploadImageToStorage(bytes);
+        
+        setState(() {
+          _selectedImageBytes = bytes;
+          _imageUrl = imageUrl;
+          _isUploadingImage = false;
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Foto berhasil diupload'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _isUploadingImage = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error picking image: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<String> _uploadImageToStorage(Uint8List imageBytes) async {
+    try {
+      final supabase = Supabase.instance.client;
+      final userId = supabase.auth.currentUser?.id;
+      
+      if (userId == null) {
+        throw Exception('User not authenticated');
+      }
+      
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final fileName = 'product_${userId}_$timestamp.jpg';
+      final filePath = 'products/$userId/$fileName';
+      
+      await supabase.storage.from('product_image').uploadBinary(
+            filePath,
+            imageBytes,
+            fileOptions: const FileOptions(upsert: true),
+          );
+      
+      final publicUrl = supabase.storage.from('product_image').getPublicUrl(filePath);
+      
+      return publicUrl;
+    } catch (e) {
+      print('Error uploading image: $e');
+      rethrow;
+    }
+  }
+
   Future<void> _handleSave() async {
     if (!_formKey.currentState!.validate()) return;
     
@@ -87,8 +184,9 @@ class _AddItemPageState extends State<AddItemPage> {
     setState(() => _isSaving = true);
     
     final name = _nameController.text.trim();
-    final price = double.tryParse(_priceController.text) ?? 0.0;
-    final weight = int.tryParse(_weightController.text) ?? 100;
+    final sellingPrice = double.tryParse(_sellingPriceController.text) ?? 0.0;
+    final capitalPrice = double.tryParse(_capitalPriceController.text) ?? 0.0;
+  
     
     String? expDateIso;
     if (_selectedDate != null) {
@@ -96,15 +194,26 @@ class _AddItemPageState extends State<AddItemPage> {
     }
 
     try {
-      await supabase.from('inventories').insert({
+      // Prepare data for insertion, excluding null values
+      final Map<String, dynamic> insertData = {
         'user_id': userId,
         'name': name,
         'qty_available': _quantity,
-        'selling_price': price,
-        'weight_gr': weight,
-        'image_url': _imageUrl,
-        'exp_date': expDateIso,
-      });
+        'selling_price': sellingPrice, // Harga Jual
+        'capital_price': capitalPrice, // Harga Beli
+      };
+      
+      // Only add image_url if image was uploaded
+      if (_imageUrl != null && _imageUrl!.isNotEmpty) {
+        insertData['image_url'] = _imageUrl;
+      }
+      
+      // Only add exp_date if selected
+      if (expDateIso != null) {
+        insertData['exp_date'] = expDateIso;
+      }
+      
+      await supabase.from('inventories').insert(insertData);
       
       _onSaveSuccess();
     } catch (e) {
@@ -183,7 +292,7 @@ class _AddItemPageState extends State<AddItemPage> {
                   ),
                   const SizedBox(width: 8),
                   const Text(
-                    'Add New Item',
+                    'Tambahkan Produk Baru',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 20,
@@ -217,7 +326,7 @@ class _AddItemPageState extends State<AddItemPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Item Details',
+                        'Detail Produk',
                         style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
@@ -236,12 +345,12 @@ class _AddItemPageState extends State<AddItemPage> {
                       const SizedBox(height: 24),
 
                       const Text(
-                        'Photo',
+                        'Foto Produk',
                         style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
                       ),
                       const SizedBox(height: 8),
                       GestureDetector(
-                        onTap: _showMockImageInputDialog,
+                        onTap: _isUploadingImage ? null : _pickImage,
                         child: Container(
                           height: 110,
                           width: double.infinity,
@@ -254,48 +363,72 @@ class _AddItemPageState extends State<AddItemPage> {
                               style: BorderStyle.solid,
                             ),
                           ),
-                          child: _imageUrl != null && _imageUrl!.isNotEmpty
-                              ? ClipRRect(
-                                  borderRadius: BorderRadius.circular(16),
-                                  child: Stack(
-                                    fit: StackFit.expand,
+                          child: _isUploadingImage
+                              ? const Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
-                                      Image.network(_imageUrl!, fit: BoxFit.cover),
-                                      Container(
-                                        color: Colors.black.withValues(alpha: 0.3),
-                                        child: const Center(
-                                          child: Icon(Icons.edit, color: Colors.white, size: 28),
+                                      SizedBox(
+                                        width: 24,
+                                        height: 24,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Color(0xFF2979FF),
+                                        ),
+                                      ),
+                                      SizedBox(height: 8),
+                                      Text(
+                                        'Uploading...',
+                                        style: TextStyle(
+                                          color: Color(0xFF2979FF),
+                                          fontSize: 12,
                                         ),
                                       ),
                                     ],
                                   ),
                                 )
-                              : const Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(Icons.add_circle, color: Color(0xFF2979FF), size: 28),
-                                    SizedBox(height: 8),
-                                    Text(
-                                      'Tambahkan Foto',
-                                      style: TextStyle(
-                                        color: Color(0xFF2979FF),
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 13,
+                              : _selectedImageBytes != null
+                                  ? ClipRRect(
+                                      borderRadius: BorderRadius.circular(16),
+                                      child: Stack(
+                                        fit: StackFit.expand,
+                                        children: [
+                                          Image.memory(_selectedImageBytes!, fit: BoxFit.cover),
+                                          Container(
+                                            color: Colors.black.withValues(alpha: 0.3),
+                                            child: const Center(
+                                              child: Icon(Icons.edit, color: Colors.white, size: 28),
+                                            ),
+                                          ),
+                                        ],
                                       ),
+                                    )
+                                  : const Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.add_circle, color: Color(0xFF2979FF), size: 28),
+                                        SizedBox(height: 8),
+                                        Text(
+                                          'Tambahkan Foto',
+                                          style: TextStyle(
+                                            color: Color(0xFF2979FF),
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                  ],
-                                ),
                         ),
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        'Ukuran max. 10 MB',
+                        'Pilih foto dari galeri (Opsional, max 10 MB)',
                         style: TextStyle(fontSize: 11, color: Colors.grey[400], fontWeight: FontWeight.w500),
                       ),
                       const Divider(height: 36),
 
                       const Text(
-                        'Item Info',
+                        'Info Produk',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -304,11 +437,11 @@ class _AddItemPageState extends State<AddItemPage> {
                       ),
                       const SizedBox(height: 18),
 
-                      _buildLabel('Item Name'),
+                      _buildLabel('Nama Produk *'),
                       TextFormField(
                         controller: _nameController,
                         style: const TextStyle(fontSize: 13, color: Colors.black87),
-                        decoration: _inputDecoration(hint: 'Masukkan nama item'),
+                        decoration: _inputDecoration(hint: 'Masukkan nama produk'),
                         validator: (value) {
                           if (value == null || value.trim().isEmpty) {
                             return 'Nama tidak boleh kosong';
@@ -318,7 +451,7 @@ class _AddItemPageState extends State<AddItemPage> {
                       ),
                       const SizedBox(height: 18),
 
-                      _buildLabel('Qty'),
+                      _buildLabel('Jumlah stok *'),
                       Row(
                         children: [
                           Container(
@@ -328,31 +461,48 @@ class _AddItemPageState extends State<AddItemPage> {
                             ),
                             child: Row(
                               children: [
+                                // Minus button
                                 IconButton(
                                   onPressed: () {
                                     if (_quantity > 0) {
-                                      setState(() {
-                                        _quantity--;
-                                        _recalculateTotalValue();
-                                      });
+                                      _updateQuantity(_quantity - 1);
                                     }
                                   },
                                   icon: const Icon(Icons.remove, color: Colors.black54, size: 20),
                                   constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
                                   padding: EdgeInsets.zero,
                                 ),
-                                Container(
-                                  width: 50,
-                                  alignment: Alignment.center,
-                                  child: Text(
-                                    '$_quantity',
+                                // Editable text field
+                                SizedBox(
+                                  width: 140,
+                                  child: TextFormField(
+                                    controller: _quantityController,
+                                    keyboardType: TextInputType.number,
+                                    textAlign: TextAlign.center,
                                     style: const TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 15,
                                       color: Color(0xFF1E293B),
                                     ),
+                                    decoration: InputDecoration(
+                                      border: InputBorder.none,
+                                      contentPadding: EdgeInsets.zero,
+                                      isDense: true,
+                                    ),
+                                    onChanged: _onQuantityChanged,
+                                    validator: (value) {
+                                      if (value == null || value.trim().isEmpty) {
+                                        return 'Stok tidak boleh kosong';
+                                      }
+                                      final int? quantity = int.tryParse(value);
+                                      if (quantity == null || quantity < 0) {
+                                        return 'Stok harus berupa angka positif';
+                                      }
+                                      return null;
+                                    },
                                   ),
                                 ),
+                                // Plus button
                                 Container(
                                   decoration: const BoxDecoration(
                                     color: Color(0xFF2979FF),
@@ -363,10 +513,7 @@ class _AddItemPageState extends State<AddItemPage> {
                                   ),
                                   child: IconButton(
                                     onPressed: () {
-                                      setState(() {
-                                        _quantity++;
-                                        _recalculateTotalValue();
-                                      });
+                                      _updateQuantity(_quantity + 1);
                                     },
                                     icon: const Icon(Icons.add, color: Colors.white, size: 20),
                                     constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
@@ -386,16 +533,15 @@ class _AddItemPageState extends State<AddItemPage> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                _buildLabel('Price'),
+                                _buildLabel('Harga Jual *'),
                                 TextFormField(
-                                  controller: _priceController,
+                                  controller: _sellingPriceController,
                                   keyboardType: TextInputType.number,
                                   style: const TextStyle(fontSize: 13, color: Colors.black87),
                                   decoration: _inputDecoration(hint: 'Rp. 0'),
-                                  onChanged: (_) => _recalculateTotalValue(),
                                   validator: (value) {
                                     if (value == null || value.trim().isEmpty) {
-                                      return 'Harga kosong';
+                                      return 'Harga jual kosong';
                                     }
                                     return null;
                                   },
@@ -408,25 +554,18 @@ class _AddItemPageState extends State<AddItemPage> {
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                _buildLabel('Total Value'),
-                                Container(
-                                  width: double.infinity,
-                                  height: 48,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFF1F5F9),
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
-                                  ),
-                                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                                  alignment: Alignment.centerLeft,
-                                  child: Text(
-                                    CartManager.formatPrice(_totalValue),
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13,
-                                      color: Color(0xFF64748B),
-                                    ),
-                                  ),
+                                _buildLabel('Harga Beli *'),
+                                TextFormField(
+                                  controller: _capitalPriceController,
+                                  keyboardType: TextInputType.number,
+                                  style: const TextStyle(fontSize: 13, color: Colors.black87),
+                                  decoration: _inputDecoration(hint: 'Rp. 0'),
+                                  validator: (value) {
+                                    if (value == null || value.trim().isEmpty) {
+                                      return 'Harga beli kosong';
+                                    }
+                                    return null;
+                                  },
                                 ),
                               ],
                             ),
@@ -435,31 +574,7 @@ class _AddItemPageState extends State<AddItemPage> {
                       ),
                       const SizedBox(height: 18),
 
-                      _buildLabel('Weight'),
-                      TextFormField(
-                        controller: _weightController,
-                        keyboardType: TextInputType.number,
-                        style: const TextStyle(fontSize: 13, color: Colors.black87),
-                        decoration: _inputDecoration(
-                          hint: 'Masukkan berat',
-                          suffix: Container(
-                            padding: const EdgeInsets.only(left: 8),
-                            child: const Text(
-                              'Gr',
-                              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 13),
-                            ),
-                          ),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Berat kosong';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 18),
-
-                      _buildLabel('Exp Date'),
+                      _buildLabel('Tanggal Kadaluarsa (Exp)'),
                       GestureDetector(
                         onTap: () => _selectDate(context),
                         child: AbsorbPointer(
@@ -467,15 +582,9 @@ class _AddItemPageState extends State<AddItemPage> {
                             controller: _expDateController,
                             style: const TextStyle(fontSize: 13, color: Colors.black87),
                             decoration: _inputDecoration(
-                              hint: 'dd/mm/yyyy',
+                              hint: 'dd/mm/yyyy (opsional)',
                               suffix: const Icon(Icons.calendar_month, color: Colors.grey, size: 20),
                             ),
-                            validator: (value) {
-                              if (value == null || value.trim().isEmpty) {
-                                  return 'Exp date kosong';
-                              }
-                              return null;
-                            },
                           ),
                         ),
                       ),
@@ -485,7 +594,7 @@ class _AddItemPageState extends State<AddItemPage> {
                         width: double.infinity,
                         height: 52,
                         child: ElevatedButton(
-                          onPressed: _isSaving ? null : _handleSave,
+                          onPressed: (_isSaving || _isUploadingImage) ? null : _handleSave,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF2979FF),
                             foregroundColor: Colors.white,
@@ -552,37 +661,6 @@ class _AddItemPageState extends State<AddItemPage> {
         borderSide: const BorderSide(color: Colors.red, width: 2),
       ),
       contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-    );
-  }
-
-  void _showMockImageInputDialog() {
-    final textController = TextEditingController(text: _imageUrl);
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Masukkan URL Foto'),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        content: TextField(
-          controller: textController,
-          decoration: const InputDecoration(
-            hintText: 'https://example.com/image.jpg',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
-          ElevatedButton(
-            onPressed: () {
-              setState(() {
-                _imageUrl = textController.text.trim();
-              });
-              Navigator.pop(ctx);
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2979FF)),
-            child: const Text('Simpan'),
-          ),
-        ],
-      ),
     );
   }
 }
