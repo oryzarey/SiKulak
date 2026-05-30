@@ -3,8 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'main.dart';
-import 'models.dart';
-import 'cart_manager.dart';
 
 class AddItemPage extends StatefulWidget {
   final VoidCallback onSaved;
@@ -24,11 +22,10 @@ class _AddItemPageState extends State<AddItemPage> {
   final TextEditingController _nameController = TextEditingController();
   final TextEditingController _sellingPriceController = TextEditingController(); // Harga Jual
   final TextEditingController _capitalPriceController = TextEditingController(); // Harga Beli
-  final TextEditingController _weightController = TextEditingController();
   final TextEditingController _expDateController = TextEditingController();
+  final TextEditingController _quantityController = TextEditingController(); // New controller for quantity
   
   int _quantity = 1;
-  double _totalValue = 0.0;
   String? _imageUrl;
   Uint8List? _selectedImageBytes;
   bool _isSaving = false;
@@ -37,20 +34,19 @@ class _AddItemPageState extends State<AddItemPage> {
   DateTime? _selectedDate;
 
   @override
+  void initState() {
+    super.initState();
+    _quantityController.text = _quantity.toString();
+  }
+
+  @override
   void dispose() {
     _nameController.dispose();
     _sellingPriceController.dispose();
     _capitalPriceController.dispose();
-    _weightController.dispose();
     _expDateController.dispose();
+    _quantityController.dispose();
     super.dispose();
-  }
-
-  void _recalculateTotalValue() {
-    final sellingPrice = double.tryParse(_sellingPriceController.text) ?? 0.0;
-    setState(() {
-      _totalValue = _quantity * sellingPrice;
-    });
   }
 
   String _formatDate(DateTime date) {
@@ -82,6 +78,29 @@ class _AddItemPageState extends State<AddItemPage> {
         _selectedDate = picked;
         _expDateController.text = _formatDate(picked);
       });
+    }
+  }
+
+  void _updateQuantity(int newQuantity) {
+    if (newQuantity < 0) newQuantity = 0;
+    setState(() {
+      _quantity = newQuantity;
+      _quantityController.text = _quantity.toString();
+    });
+  }
+
+  void _onQuantityChanged(String value) {
+    if (value.isEmpty) {
+      _updateQuantity(0);
+      return;
+    }
+    
+    final int? parsedValue = int.tryParse(value);
+    if (parsedValue != null && parsedValue >= 0) {
+      _updateQuantity(parsedValue);
+    } else {
+      // If invalid input, revert to current quantity
+      _quantityController.text = _quantity.toString();
     }
   }
 
@@ -167,12 +186,7 @@ class _AddItemPageState extends State<AddItemPage> {
     final name = _nameController.text.trim();
     final sellingPrice = double.tryParse(_sellingPriceController.text) ?? 0.0;
     final capitalPrice = double.tryParse(_capitalPriceController.text) ?? 0.0;
-    
-    // Make weight optional - only parse if not empty
-    int? weight;
-    if (_weightController.text.trim().isNotEmpty) {
-      weight = int.tryParse(_weightController.text);
-    }
+  
     
     String? expDateIso;
     if (_selectedDate != null) {
@@ -192,11 +206,6 @@ class _AddItemPageState extends State<AddItemPage> {
       // Only add image_url if image was uploaded
       if (_imageUrl != null && _imageUrl!.isNotEmpty) {
         insertData['image_url'] = _imageUrl;
-      }
-      
-      // Only add weight_gr if it has a value
-      if (weight != null && weight > 0) {
-        insertData['weight_gr'] = weight;
       }
       
       // Only add exp_date if selected
@@ -283,7 +292,7 @@ class _AddItemPageState extends State<AddItemPage> {
                   ),
                   const SizedBox(width: 8),
                   const Text(
-                    'Add New Item',
+                    'Tambahkan Produk Baru',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 20,
@@ -317,7 +326,7 @@ class _AddItemPageState extends State<AddItemPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Item Details',
+                        'Detail Produk',
                         style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
@@ -336,7 +345,7 @@ class _AddItemPageState extends State<AddItemPage> {
                       const SizedBox(height: 24),
 
                       const Text(
-                        'Photo (Optional)',
+                        'Foto Produk',
                         style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
                       ),
                       const SizedBox(height: 8),
@@ -419,7 +428,7 @@ class _AddItemPageState extends State<AddItemPage> {
                       const Divider(height: 36),
 
                       const Text(
-                        'Item Info',
+                        'Info Produk',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -428,11 +437,11 @@ class _AddItemPageState extends State<AddItemPage> {
                       ),
                       const SizedBox(height: 18),
 
-                      _buildLabel('Item Name *'),
+                      _buildLabel('Nama Produk *'),
                       TextFormField(
                         controller: _nameController,
                         style: const TextStyle(fontSize: 13, color: Colors.black87),
-                        decoration: _inputDecoration(hint: 'Masukkan nama item'),
+                        decoration: _inputDecoration(hint: 'Masukkan nama produk'),
                         validator: (value) {
                           if (value == null || value.trim().isEmpty) {
                             return 'Nama tidak boleh kosong';
@@ -442,7 +451,7 @@ class _AddItemPageState extends State<AddItemPage> {
                       ),
                       const SizedBox(height: 18),
 
-                      _buildLabel('Qty *'),
+                      _buildLabel('Jumlah stok *'),
                       Row(
                         children: [
                           Container(
@@ -452,31 +461,48 @@ class _AddItemPageState extends State<AddItemPage> {
                             ),
                             child: Row(
                               children: [
+                                // Minus button
                                 IconButton(
                                   onPressed: () {
                                     if (_quantity > 0) {
-                                      setState(() {
-                                        _quantity--;
-                                        _recalculateTotalValue();
-                                      });
+                                      _updateQuantity(_quantity - 1);
                                     }
                                   },
                                   icon: const Icon(Icons.remove, color: Colors.black54, size: 20),
                                   constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
                                   padding: EdgeInsets.zero,
                                 ),
-                                Container(
-                                  width: 50,
-                                  alignment: Alignment.center,
-                                  child: Text(
-                                    '$_quantity',
+                                // Editable text field
+                                SizedBox(
+                                  width: 140,
+                                  child: TextFormField(
+                                    controller: _quantityController,
+                                    keyboardType: TextInputType.number,
+                                    textAlign: TextAlign.center,
                                     style: const TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 15,
                                       color: Color(0xFF1E293B),
                                     ),
+                                    decoration: InputDecoration(
+                                      border: InputBorder.none,
+                                      contentPadding: EdgeInsets.zero,
+                                      isDense: true,
+                                    ),
+                                    onChanged: _onQuantityChanged,
+                                    validator: (value) {
+                                      if (value == null || value.trim().isEmpty) {
+                                        return 'Stok tidak boleh kosong';
+                                      }
+                                      final int? quantity = int.tryParse(value);
+                                      if (quantity == null || quantity < 0) {
+                                        return 'Stok harus berupa angka positif';
+                                      }
+                                      return null;
+                                    },
                                   ),
                                 ),
+                                // Plus button
                                 Container(
                                   decoration: const BoxDecoration(
                                     color: Color(0xFF2979FF),
@@ -487,10 +513,7 @@ class _AddItemPageState extends State<AddItemPage> {
                                   ),
                                   child: IconButton(
                                     onPressed: () {
-                                      setState(() {
-                                        _quantity++;
-                                        _recalculateTotalValue();
-                                      });
+                                      _updateQuantity(_quantity + 1);
                                     },
                                     icon: const Icon(Icons.add, color: Colors.white, size: 20),
                                     constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
@@ -516,7 +539,6 @@ class _AddItemPageState extends State<AddItemPage> {
                                   keyboardType: TextInputType.number,
                                   style: const TextStyle(fontSize: 13, color: Colors.black87),
                                   decoration: _inputDecoration(hint: 'Rp. 0'),
-                                  onChanged: (_) => _recalculateTotalValue(),
                                   validator: (value) {
                                     if (value == null || value.trim().isEmpty) {
                                       return 'Harga jual kosong';
@@ -551,25 +573,8 @@ class _AddItemPageState extends State<AddItemPage> {
                         ],
                       ),
                       const SizedBox(height: 18),
-                      _buildLabel('Weight (Optional)'),
-                      TextFormField(
-                        controller: _weightController,
-                        keyboardType: TextInputType.number,
-                        style: const TextStyle(fontSize: 13, color: Colors.black87),
-                        decoration: _inputDecoration(
-                          hint: 'Masukkan berat (opsional)',
-                          suffix: Container(
-                            padding: const EdgeInsets.only(left: 8),
-                            child: const Text(
-                              'Gr',
-                              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 13),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(height: 18),
 
-                      _buildLabel('Exp Date (Optional)'),
+                      _buildLabel('Tanggal Kadaluarsa (Exp)'),
                       GestureDetector(
                         onTap: () => _selectDate(context),
                         child: AbsorbPointer(

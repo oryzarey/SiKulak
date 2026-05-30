@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'main.dart';
 import 'models.dart';
-import 'cart_manager.dart';
 
 class EditItemPage extends StatefulWidget {
   final Product product;
@@ -330,7 +329,7 @@ class _EditItemPageState extends State<EditItemPage> {
                   ),
                   const SizedBox(width: 8),
                   const Text(
-                    'Edit Item',
+                    'Edit Produk',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 20,
@@ -364,7 +363,7 @@ class _EditItemPageState extends State<EditItemPage> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       const Text(
-                        'Item Details',
+                        'Detail Produk',
                         style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
@@ -383,7 +382,7 @@ class _EditItemPageState extends State<EditItemPage> {
                       const SizedBox(height: 24),
 
                       const Text(
-                        'Photo (Optional)',
+                        'Foto Produk',
                         style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
                       ),
                       const SizedBox(height: 8),
@@ -442,7 +441,7 @@ class _EditItemPageState extends State<EditItemPage> {
                       const Divider(height: 36),
 
                       const Text(
-                        'Item Info',
+                        'Info Produk',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -451,7 +450,7 @@ class _EditItemPageState extends State<EditItemPage> {
                       ),
                       const SizedBox(height: 18),
 
-                      _buildLabel('Item Name *'),
+                      _buildLabel('Nama Produk *'),
                       TextFormField(
                         controller: _nameController,
                         style: const TextStyle(fontSize: 13, color: Colors.black87),
@@ -465,7 +464,7 @@ class _EditItemPageState extends State<EditItemPage> {
                       ),
                       const SizedBox(height: 18),
 
-                      _buildLabel('Qty *'),
+                      _buildLabel('Jumlah Stok *'),
                       Row(
                         children: [
                           Container(
@@ -572,7 +571,7 @@ class _EditItemPageState extends State<EditItemPage> {
                       ),
                       const SizedBox(height: 18),
 
-                      _buildLabel('Exp Date (Optional)'),
+                      _buildLabel('Tanggal Kadaluarsa (Exp)'),
                       GestureDetector(
                         onTap: () => _selectDate(context),
                         child: AbsorbPointer(
