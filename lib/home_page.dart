@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'main.dart';
 import 'models.dart';
 import 'cart_manager.dart';
@@ -12,6 +13,7 @@ import 'profile_page.dart';
 import 'notification_service.dart';
 import 'product_detail_page.dart';
 import 'product_search_page.dart';
+import 'notification_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -34,6 +36,7 @@ class _HomePageState extends State<HomePage> {
   String? _errorMessage;
   bool _lowStockChecked = false;
   bool _lowStockDialogShownThisSession = false;
+  StreamSubscription<AuthState>? _authStateSubscription;
 
   // Promo carousel
   late final PageController _promoPageController;
@@ -70,13 +73,85 @@ class _HomePageState extends State<HomePage> {
     super.initState();
     _promoPageController = PageController(viewportFraction: 1.0);
     _loadData();
+    _authStateSubscription = supabase.auth.onAuthStateChange.listen((data) {
+      if (!mounted) return;
+      setState(() {});
+    });
   }
 
   @override
   void dispose() {
-    _promoPageController.dispose();
     _promoAutoScrollTimer?.cancel();
+    _promoPageController.dispose();
+    _authStateSubscription?.cancel();
     super.dispose();
+  }
+
+  Stream<List<Map<String, dynamic>>> _notificationStream() {
+    final userId = supabase.auth.currentUser?.id ?? supabase.auth.currentSession?.user.id;
+    if (userId == null) return const Stream.empty();
+    return supabase
+        .from('notifications')
+        .stream(primaryKey: ['id'])
+        .eq('user_id', userId);
+  }
+
+  Widget _buildNotificationBadgeIcon() {
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: _notificationStream(),
+      builder: (context, snapshot) {
+        final data = snapshot.data ?? const [];
+        final count = data.where((row) => row['is_read'] == false).length;
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            _HeaderIcon(
+              icon: Icons.notifications_none_outlined,
+              onTap: () async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => NotificationPage(
+                      onNotificationsMarkedRead: () {},
+                    ),
+                  ),
+                );
+              },
+            ),
+            if (count > 0)
+              Positioned(
+                right: -1,
+                top: -1,
+                child: Container(
+                  constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEF4444),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 1.2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.16),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    count > 99 ? '99+' : '$count',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
+                      height: 1,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _checkAndInitializeInventory() async {
@@ -273,6 +348,34 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<bool> _shouldInsertNotification({
+    required String userId,
+    required InventoryItem item,
+    required String notifType,
+  }) async {
+    final lastNotif = await supabase
+        .from('notifications')
+        .select('type, created_at')
+        .eq('user_id', userId)
+        .eq('related_inventory_id', item.id)
+        .order('created_at', ascending: false)
+        .limit(1)
+        .maybeSingle();
+
+    if (lastNotif == null) return true;
+
+    final lastType = lastNotif['type']?.toString();
+    final lastCreatedAt = DateTime.tryParse(lastNotif['created_at']?.toString() ?? '');
+
+    if (lastType != notifType) return true;
+
+    if (item.updatedAt != null && lastCreatedAt != null) {
+      return item.updatedAt!.isAfter(lastCreatedAt);
+    }
+
+    return false;
+  }
+
 // ── Low stock check (from inventories table) ───────────────
   Future<void> _checkLowStock() async {
     try {
@@ -302,12 +405,45 @@ class _HomePageState extends State<HomePage> {
         });
 
       if (items.isNotEmpty) {
-        // Fire OS push notifications for all low-stock / out-of-stock items.
-        for (final item in items) {
-          NotificationService().showLowStockNotification(
-            itemName: item.name,
-            qty: item.qtyAvailable,
-          );
+        final List<InventoryItem> notifiedItems = [];
+        try {
+          for (final item in items) {
+            final notifTitle = item.qtyAvailable == 0
+                ? 'Stock ${item.name} Habis'
+                : 'Stock ${item.name} Rendah';
+            final notifBody = item.qtyAvailable == 0
+                ? 'Segera tambah stock ${item.name} (stok habis)'
+                : 'Segera tambah stock ${item.name}';
+            final notifType = item.qtyAvailable == 0 ? 'out_of_stock' : 'low_stock';
+            final shouldInsert = await _shouldInsertNotification(
+              userId: userId,
+              item: item,
+              notifType: notifType,
+            );
+            if (!shouldInsert) continue;
+
+            await supabase.from('notifications').insert({
+              'user_id': userId,
+              'title': notifTitle,
+              'body': notifBody,
+              'type': notifType,
+              'related_inventory_id': item.id,
+              'is_read': false,
+              'created_at': DateTime.now().toUtc().toIso8601String(),
+            });
+            notifiedItems.add(item);
+          }
+        } catch (e) {
+          debugPrint('[ERROR] _checkLowStock insert notification: $e');
+        }
+
+        if (notifiedItems.isNotEmpty) {
+          for (final item in notifiedItems) {
+            NotificationService().showLowStockNotification(
+              itemName: item.name,
+              qty: item.qtyAvailable,
+            );
+          }
         }
 
         if (!_lowStockDialogShownThisSession) {
@@ -375,7 +511,10 @@ class _HomePageState extends State<HomePage> {
           final newQty = (currentQty - cartItem.quantity).clamp(0, 999999);
           await supabase
               .from('inventories')
-              .update({'qty_available': newQty})
+              .update({
+                'qty_available': newQty,
+                'updated_at': DateTime.now().toUtc().toIso8601String(),
+              })
               .eq('id', invId);
         }
       }
@@ -953,10 +1092,7 @@ class _HomePageState extends State<HomePage> {
                       SizedBox(
                         width: 56,
                         height: 56,
-                        child: _HeaderIcon(
-                          icon: Icons.notifications_none_outlined,
-                          onTap: () {},
-                        ),
+                        child: _buildNotificationBadgeIcon(),
                       ),
                     ],
                   ),

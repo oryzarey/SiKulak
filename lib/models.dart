@@ -71,6 +71,7 @@ class InventoryItem {
   final double sellingPrice;
   final String? imageUrl;
   final DateTime? expDate;
+  final DateTime? updatedAt;
 
   const InventoryItem({
     required this.id,
@@ -80,6 +81,7 @@ class InventoryItem {
     this.sellingPrice = 0,
     this.imageUrl,
     this.expDate,
+    this.updatedAt,
   });
 
   factory InventoryItem.fromJson(Map<String, dynamic> json) {
@@ -91,6 +93,7 @@ class InventoryItem {
       sellingPrice: (json['selling_price'] as num?)?.toDouble() ?? 0.0,
       imageUrl: json['image_url'] as String? ?? json['image'] as String?,
       expDate: json['exp_date'] != null ? DateTime.tryParse(json['exp_date'].toString()) : null,
+      updatedAt: json['updated_at'] != null ? DateTime.tryParse(json['updated_at'].toString()) : null,
     );
   }
 }
@@ -151,4 +154,40 @@ class UserProfile {
     'created_at': createdAt.toIso8601String(),
     'updated_at': updatedAt.toIso8601String(),
   };
+}
+
+/// Notification model for notifications table
+class AppNotification {
+  final String id;
+  final String userId;
+  final String title;
+  final String? body;
+  final String? type;
+  final String? relatedInventoryId;
+  final bool isRead;
+  final DateTime createdAt;
+
+  const AppNotification({
+    required this.id,
+    required this.userId,
+    required this.title,
+    this.body,
+    this.type,
+    this.relatedInventoryId,
+    this.isRead = false,
+    required this.createdAt,
+  });
+
+  factory AppNotification.fromJson(Map<String, dynamic> json) {
+    return AppNotification(
+      id: json['id']?.toString() ?? '',
+      userId: json['user_id']?.toString() ?? '',
+      title: json['title'] ?? '',
+      body: json['body'],
+      type: json['type'],
+      relatedInventoryId: json['related_inventory_id']?.toString(),
+      isRead: json['is_read'] ?? false,
+      createdAt: DateTime.parse(json['created_at']),
+    );
+  }
 }

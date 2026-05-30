@@ -239,6 +239,7 @@ class _EditItemPageState extends State<EditItemPage> {
         'qty_available': _quantity,
         'selling_price': sellingPrice,
         'capital_price': capitalPrice,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
       };
       
       // Only add optional fields if they have values

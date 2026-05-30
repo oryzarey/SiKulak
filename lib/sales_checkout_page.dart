@@ -75,6 +75,7 @@ class _SalesCheckoutPageState extends State<SalesCheckoutPage> {
           final newQty = (currentQty - cartItem.quantity).clamp(0, 999999);
           await supabase.from('inventories').update({
             'qty_available': newQty,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
           }).eq('id', invId);
         }
       }
