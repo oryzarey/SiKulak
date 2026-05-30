@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'cart_manager.dart';
 import 'main.dart';
 import 'models.dart';
+import 'notification_page.dart';
 import 'sales_checkout_page.dart';
 import 'widgets/navbar.dart';
 
@@ -53,10 +55,88 @@ class _PosPageState extends State<PosPage> {
 		_authStateSubscription = supabase.auth.onAuthStateChange.listen((data) {
 			if (!mounted) return;
 			if (data.session != null) {
+				setState(() {});
 				_loadInitialData();
 			}
 		});
 		_loadInitialData();
+	}
+
+	Stream<List<Map<String, dynamic>>> _notificationStream() {
+		final userId = _currentUserId;
+		if (userId == null) return const Stream.empty();
+		return supabase
+				.from('notifications')
+				.stream(primaryKey: ['id'])
+				.eq('user_id', userId);
+	}
+
+	Widget _buildNotificationBadgeIcon() {
+		return StreamBuilder<List<Map<String, dynamic>>>(
+			stream: _notificationStream(),
+			builder: (context, snapshot) {
+				final data = snapshot.data ?? const [];
+				final count = data.where((row) => row['is_read'] == false).length;
+				return GestureDetector(
+					onTap: () async {
+						await Navigator.of(context).push(
+							MaterialPageRoute(
+								builder: (_) => NotificationPage(onNotificationsMarkedRead: () {}),
+							),
+						);
+					},
+					child: Stack(
+						clipBehavior: Clip.none,
+						alignment: Alignment.center,
+						children: [
+							Container(
+								width: 48,
+								height: 48,
+								decoration: BoxDecoration(
+									shape: BoxShape.circle,
+									color: Colors.white.withValues(alpha: 0.15),
+									border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
+								),
+								child: const Center(
+									child: Icon(Icons.notifications_none_rounded, color: Colors.white, size: 24),
+								),
+							),
+							if (count > 0)
+								Positioned(
+									right: -1,
+									top: -1,
+									child: Container(
+										constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+										padding: const EdgeInsets.symmetric(horizontal: 3),
+										decoration: BoxDecoration(
+											color: Color(0xFFEF4444),
+											shape: BoxShape.circle,
+											border: Border.all(color: Colors.white, width: 1.2),
+											boxShadow: [
+												BoxShadow(
+													color: Colors.black.withValues(alpha: 0.16),
+													blurRadius: 6,
+													offset: Offset(0, 2),
+												),
+											],
+										),
+										child: Text(
+											count > 99 ? '99+' : '$count',
+											textAlign: TextAlign.center,
+											style: const TextStyle(
+												color: Colors.white,
+												fontSize: 9,
+												fontWeight: FontWeight.bold,
+												height: 1,
+											),
+										),
+									),
+								),
+						],
+					),
+				);
+			},
+		);
 	}
 
 	@override
@@ -414,34 +494,7 @@ class _PosPageState extends State<PosPage> {
 									),
 								),
 								const SizedBox(width: 10),
-								Container(
-									width: 48,
-									height: 48,
-									decoration: BoxDecoration(
-										shape: BoxShape.circle,
-										color: Colors.white.withValues(alpha: 0.15),
-										border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
-									),
-									child: Stack(
-										alignment: Alignment.center,
-										children: [
-											const Icon(Icons.notifications_none_rounded, color: Colors.white, size: 24),
-											if (_lowStockCount > 0)
-												Positioned(
-													right: 13,
-													top: 13,
-													child: Container(
-														width: 8,
-														height: 8,
-														decoration: const BoxDecoration(
-															color: Colors.redAccent,
-															shape: BoxShape.circle,
-														),
-													),
-												),
-										],
-									),
-								),
+								_buildNotificationBadgeIcon(),
 							],
 						),
 					],

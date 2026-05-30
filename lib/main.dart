@@ -12,6 +12,7 @@ import 'login_page.dart';
 import 'forgot_password_page.dart';
 import 'change_password_page.dart';
 import 'notification_service.dart';
+import 'inventory_realtime_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -42,6 +43,7 @@ class _MyAppState extends State<MyApp> {
   void initState() {
     super.initState();
     _setupAuthListener();
+    InventoryRealtimeService().start();
   }
 
   void _setupAuthListener() {
@@ -64,9 +66,11 @@ class _MyAppState extends State<MyApp> {
       }
 
       if (event == AuthChangeEvent.signedIn) {
+        InventoryRealtimeService().start();
         // Double check we're not in password recovery state to be safe
         _navigatorKey.currentState?.pushNamedAndRemoveUntil('/home', (route) => false);
       } else if (event == AuthChangeEvent.signedOut || (event == AuthChangeEvent.initialSession && session == null)) {
+        InventoryRealtimeService().stop();
         _navigatorKey.currentState?.pushNamedAndRemoveUntil('/welcome', (route) => false);
       }
     });

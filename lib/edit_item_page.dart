@@ -166,6 +166,7 @@ class _EditItemPageState extends State<EditItemPage> {
         'weight_gr': weight,
         'image_url': _imageUrl,
         'exp_date': expDateIso,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
       }).eq('id', widget.product.id);
       
       _onSaveSuccess();
@@ -179,6 +180,7 @@ class _EditItemPageState extends State<EditItemPage> {
           'qty_available': _quantity,
           'selling_price': price,
           'exp_date': expDateIso,
+          'updated_at': DateTime.now().toUtc().toIso8601String(),
         }).eq('id', widget.product.id);
         
         _onSaveSuccess();

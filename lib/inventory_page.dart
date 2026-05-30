@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'main.dart';
 import 'models.dart';
 import 'cart_manager.dart';
+import 'notification_page.dart';
 import 'widgets/navbar.dart';
 import 'edit_item_page.dart';
 import 'add_item_page.dart';
@@ -28,6 +30,7 @@ class _InventoryPageState extends State<InventoryPage> {
 
   // 0 = Stock
   int _selectedTab = 0;
+  StreamSubscription<AuthState>? _authStateSubscription;
 
   // Stock sub-filter
   String _stockFilter = 'Semua';
@@ -44,12 +47,94 @@ class _InventoryPageState extends State<InventoryPage> {
     _searchController = TextEditingController(text: widget.initialQuery ?? '');
     _fetchProfile();
     _fetchAllProducts();
+    _authStateSubscription = supabase.auth.onAuthStateChange.listen((data) {
+      if (!mounted) return;
+      setState(() {});
+    });
+  }
+
+  Stream<List<Map<String, dynamic>>> _notificationStream() {
+    final userId = supabase.auth.currentUser?.id ?? supabase.auth.currentSession?.user.id;
+    if (userId == null) return const Stream.empty();
+    return supabase
+        .from('notifications')
+        .stream(primaryKey: ['id'])
+        .eq('user_id', userId);
+  }
+
+  Widget _buildNotificationBadgeIcon() {
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: _notificationStream(),
+      builder: (context, snapshot) {
+        final data = snapshot.data ?? const [];
+        final count = data.where((row) => row['is_read'] == false).length;
+        return GestureDetector(
+          onTap: () async {
+            await Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => NotificationPage(
+                  onNotificationsMarkedRead: () {},
+                ),
+              ),
+            );
+          },
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: const Color(0xFFE0E7FF).withValues(alpha: 0.2),
+                ),
+                child: const Center(
+                  child: Icon(Icons.notifications_none_outlined, color: Colors.white, size: 24),
+                ),
+              ),
+              if (count > 0)
+                Positioned(
+                  right: -1,
+                  top: -1,
+                  child: Container(
+                    constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                    padding: const EdgeInsets.symmetric(horizontal: 3),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEF4444),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 1.2),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.16),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
+                    ),
+                    child: Text(
+                      count > 99 ? '99+' : '$count',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 9,
+                        fontWeight: FontWeight.bold,
+                        height: 1,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override
   void dispose() {
     _searchController.dispose();
     _debounce?.cancel();
+    _authStateSubscription?.cancel();
     super.dispose();
   }
 
@@ -300,17 +385,7 @@ class _InventoryPageState extends State<InventoryPage> {
                         ),
                       ),
                       // Notification (Top Right)
-                      Container(
-                        width: 48,
-                        height: 48,
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: const Color(0xFFE0E7FF).withValues(alpha: 0.2),
-                        ),
-                        child: const Center(
-                          child: Icon(Icons.notifications_none_outlined, color: Colors.white, size: 24),
-                        ),
-                      ),
+                      _buildNotificationBadgeIcon(),
                     ],
                   ),
                 );
