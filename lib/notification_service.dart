@@ -66,6 +66,10 @@ class NotificationService {
   }) async {
     if (!_initialized) await init();
 
+    final body = qty == 0
+        ? '$itemName sudah habis'
+        : '$itemName tinggal $qty Sachet';
+
     const androidDetails = AndroidNotificationDetails(
       'low_stock_alerts',
       'Peringatan Stok Rendah',
@@ -88,7 +92,7 @@ class NotificationService {
     await _plugin.show(
       itemName.hashCode, // unique id per item
       'Tambah Stock Anda!',
-      '$itemName Anda Sisa $qty Sachet',
+      body,
       details,
     );
   }

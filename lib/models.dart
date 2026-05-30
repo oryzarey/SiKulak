@@ -89,7 +89,7 @@ class InventoryItem {
       qtyAvailable: (json['qty_available'] as num?)?.toInt() ?? 0,
       capitalPrice: (json['capital_price'] as num?)?.toDouble() ?? 0.0,
       sellingPrice: (json['selling_price'] as num?)?.toDouble() ?? 0.0,
-      imageUrl: json['image_url'] as String?,
+      imageUrl: json['image_url'] as String? ?? json['image'] as String?,
       expDate: json['exp_date'] != null ? DateTime.tryParse(json['exp_date'].toString()) : null,
     );
   }
