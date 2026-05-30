@@ -376,7 +376,7 @@ class _InventoryPageState extends State<InventoryPage> {
                       const SizedBox(width: 10),
                       Expanded(
                         child: _buildActionButton(
-                          label: 'Add Item',
+                          label: 'Tambah Produk',
                           isSelected: false,
                           icon: Icons.add,
                           onTap: () {

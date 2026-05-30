@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'main.dart';
 import 'models.dart';
-import 'cart_manager.dart';
 
 class EditItemPage extends StatefulWidget {
-  final Product product; // We pass the selected product representation
+  final Product product;
   final VoidCallback onSaved;
 
   const EditItemPage({
@@ -21,14 +20,15 @@ class _EditItemPageState extends State<EditItemPage> {
   final _formKey = GlobalKey<FormState>();
   
   late TextEditingController _nameController;
-  late TextEditingController _priceController;
+  late TextEditingController _sellingPriceController; // Harga Jual
+  late TextEditingController _capitalPriceController; // Harga Beli
   late TextEditingController _weightController;
   late TextEditingController _expDateController;
   
   int _quantity = 1;
-  double _totalValue = 0.0;
   String? _imageUrl;
   bool _isSaving = false;
+  bool _isDeleting = false;
   
   DateTime? _selectedDate;
 
@@ -36,29 +36,27 @@ class _EditItemPageState extends State<EditItemPage> {
   void initState() {
     super.initState();
     _nameController = TextEditingController(text: widget.product.name);
-    _priceController = TextEditingController(text: widget.product.price.toStringAsFixed(0));
+    _sellingPriceController = TextEditingController(text: widget.product.price.toStringAsFixed(0));
+    _capitalPriceController = TextEditingController(text: '0');
     _quantity = widget.product.stock > 0 ? widget.product.stock : 1;
     _imageUrl = widget.product.imageUrl;
+    _weightController = TextEditingController(text: '');
+    _expDateController = TextEditingController(text: '');
     
-    // We will attempt to fetch the actual inventory record to load weight and exp_date if they exist
     _loadInventoryDetails();
-    _recalculateTotalValue();
   }
 
   @override
   void dispose() {
     _nameController.dispose();
-    _priceController.dispose();
+    _sellingPriceController.dispose();
+    _capitalPriceController.dispose();
     _weightController.dispose();
     _expDateController.dispose();
     super.dispose();
   }
 
   Future<void> _loadInventoryDetails() async {
-    // Set default controllers first in case fetch fails
-    _weightController = TextEditingController(text: '100');
-    _expDateController = TextEditingController(text: '03/04/2026');
-
     try {
       final response = await supabase
           .from('inventories')
@@ -69,13 +67,11 @@ class _EditItemPageState extends State<EditItemPage> {
       if (response != null && mounted) {
         setState(() {
           _quantity = (response['qty_available'] as num?)?.toInt() ?? _quantity;
-          _priceController.text = ((response['selling_price'] as num?)?.toDouble() ?? widget.product.price).toStringAsFixed(0);
+          _sellingPriceController.text = ((response['selling_price'] as num?)?.toDouble() ?? widget.product.price).toStringAsFixed(0);
+          _capitalPriceController.text = ((response['capital_price'] as num?)?.toDouble() ?? 0).toStringAsFixed(0);
           _nameController.text = (response['name'] ?? widget.product.name) as String;
           _imageUrl = response['image_url'] as String? ?? widget.product.imageUrl;
           
-          if (response['weight_gr'] != null) {
-            _weightController.text = (response['weight_gr'] as num).toInt().toString();
-          }
           
           if (response['exp_date'] != null) {
             final parsedDate = DateTime.tryParse(response['exp_date'].toString());
@@ -84,20 +80,11 @@ class _EditItemPageState extends State<EditItemPage> {
               _expDateController.text = _formatDate(parsedDate);
             }
           }
-          
-          _recalculateTotalValue();
         });
       }
     } catch (e) {
       debugPrint('[SiKulak] Error loading detailed inventory data: $e');
     }
-  }
-
-  void _recalculateTotalValue() {
-    final price = double.tryParse(_priceController.text) ?? 0.0;
-    setState(() {
-      _totalValue = _quantity * price;
-    });
   }
 
   String _formatDate(DateTime date) {
@@ -132,20 +119,108 @@ class _EditItemPageState extends State<EditItemPage> {
     }
   }
 
+  Future<void> _handleDelete() async {
+    // Show confirmation dialog
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Hapus Produk'),
+        content: const Text(
+          'Apakah Anda yakin ingin menghapus produk ini?',
+          style: TextStyle(fontSize: 14),
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text(
+              'BATAL',
+              style: TextStyle(color: Colors.grey),
+            ),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+            ),
+            child: const Text('HAPUS'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true) return;
+
+    setState(() => _isDeleting = true);
+
+    try {
+      await supabase
+          .from('inventories')
+          .delete()
+          .eq('id', widget.product.id);
+      
+      _onDeleteSuccess();
+    } catch (e) {
+      debugPrint('[SiKulak] Delete failed: $e');
+      _onDeleteFailure(e.toString());
+    }
+  }
+
+  void _onDeleteSuccess() {
+    setState(() => _isDeleting = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: const Text(
+          'Produk berhasil dihapus!',
+          textAlign: TextAlign.center,
+          style: TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.bold),
+        ),
+        backgroundColor: Colors.green.shade900.withValues(alpha: 0.8),
+        elevation: 0,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+        margin: const EdgeInsets.only(bottom: 50, left: 40, right: 40),
+        duration: const Duration(seconds: 2),
+      ),
+    );
+    widget.onSaved();
+    Navigator.pop(context);
+  }
+
+  void _onDeleteFailure(String error) {
+    setState(() => _isDeleting = false);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Gagal menghapus produk: $error',
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 12, color: Colors.white),
+        ),
+        backgroundColor: Colors.red.shade900.withValues(alpha: 0.8),
+        elevation: 0,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
+        margin: const EdgeInsets.only(bottom: 50, left: 40, right: 40),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+  }
+
   Future<void> _handleSave() async {
     if (!_formKey.currentState!.validate()) return;
     
     setState(() => _isSaving = true);
     
     final name = _nameController.text.trim();
-    final price = double.tryParse(_priceController.text) ?? widget.product.price;
-    final weight = int.tryParse(_weightController.text) ?? 100;
+    final sellingPrice = double.tryParse(_sellingPriceController.text) ?? widget.product.price;
+    final capitalPrice = double.tryParse(_capitalPriceController.text) ?? 0;
     
     String? expDateIso;
     if (_selectedDate != null) {
       expDateIso = _selectedDate!.toIso8601String();
-    } else {
-      // Try to parse the current text if it matches dd/MM/yyyy
+    } else if (_expDateController.text.isNotEmpty) {
       try {
         final parts = _expDateController.text.split('/');
         if (parts.length == 3) {
@@ -158,34 +233,29 @@ class _EditItemPageState extends State<EditItemPage> {
     }
 
     try {
-      // 1. Try updating all columns including weight_gr and image_url
-      await supabase.from('inventories').update({
+      // Prepare update data
+      final Map<String, dynamic> updateData = {
         'name': name,
         'qty_available': _quantity,
-        'selling_price': price,
-        'weight_gr': weight,
-        'image_url': _imageUrl,
-        'exp_date': expDateIso,
-      }).eq('id', widget.product.id);
+        'selling_price': sellingPrice,
+        'capital_price': capitalPrice,
+      };
+      
+      // Only add optional fields if they have values
+      if (_imageUrl != null && _imageUrl!.isNotEmpty) {
+        updateData['image_url'] = _imageUrl;
+      }
+      
+      if (expDateIso != null) {
+        updateData['exp_date'] = expDateIso;
+      }
+      
+      await supabase.from('inventories').update(updateData).eq('id', widget.product.id);
       
       _onSaveSuccess();
     } catch (e) {
-      debugPrint('[SiKulak] Full inventories update failed, retrying with standard columns... error: $e');
-      
-      // 2. Fallback: Update only standard columns if new columns do not exist in DB yet
-      try {
-        await supabase.from('inventories').update({
-          'name': name,
-          'qty_available': _quantity,
-          'selling_price': price,
-          'exp_date': expDateIso,
-        }).eq('id', widget.product.id);
-        
-        _onSaveSuccess();
-      } catch (err) {
-        debugPrint('[SiKulak] Fallback update failed: $err');
-        _onSaveFailure(err.toString());
-      }
+      debugPrint('[SiKulak] Update failed: $e');
+      _onSaveFailure(e.toString());
     }
   }
 
@@ -236,7 +306,6 @@ class _EditItemPageState extends State<EditItemPage> {
       body: CustomScrollView(
         physics: const BouncingScrollPhysics(),
         slivers: [
-          // ─────────── EDIT ITEM APP BAR (Gambar 2) ───────────
           SliverAppBar(
             backgroundColor: Colors.transparent,
             elevation: 0,
@@ -260,7 +329,7 @@ class _EditItemPageState extends State<EditItemPage> {
                   ),
                   const SizedBox(width: 8),
                   const Text(
-                    'Edit Item',
+                    'Edit Produk',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 20,
@@ -272,7 +341,6 @@ class _EditItemPageState extends State<EditItemPage> {
             ),
           ),
 
-          // ─────────── FORM CONTAINER CARD (Gambar 2) ───────────
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.only(top: 16, left: 16, right: 16, bottom: 40),
@@ -294,9 +362,8 @@ class _EditItemPageState extends State<EditItemPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Header
                       const Text(
-                        'Item Details',
+                        'Detail Produk',
                         style: TextStyle(
                           fontSize: 20,
                           fontWeight: FontWeight.bold,
@@ -314,17 +381,13 @@ class _EditItemPageState extends State<EditItemPage> {
                       ),
                       const SizedBox(height: 24),
 
-                      // ── PHOTO UPLOAD SECTION (Gambar 2) ──
                       const Text(
-                        'Photo',
+                        'Foto Produk',
                         style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
                       ),
                       const SizedBox(height: 8),
                       GestureDetector(
-                        onTap: () {
-                          // Allow mock input of image url for demonstration
-                          _showMockImageInputDialog();
-                        },
+                        onTap: _showMockImageInputDialog,
                         child: Container(
                           height: 110,
                           width: double.infinity,
@@ -372,14 +435,13 @@ class _EditItemPageState extends State<EditItemPage> {
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        'Ukuran max. 10 MB',
+                        'Ukuran max. 10 MB (Opsional)',
                         style: TextStyle(fontSize: 11, color: Colors.grey[400], fontWeight: FontWeight.w500),
                       ),
                       const Divider(height: 36),
 
-                      // ── ITEM INFO SECTION (Gambar 2) ──
                       const Text(
-                        'Item Info',
+                        'Info Produk',
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.bold,
@@ -388,8 +450,7 @@ class _EditItemPageState extends State<EditItemPage> {
                       ),
                       const SizedBox(height: 18),
 
-                      // ── ITEM NAME ──
-                      _buildLabel('Item Name'),
+                      _buildLabel('Nama Produk *'),
                       TextFormField(
                         controller: _nameController,
                         style: const TextStyle(fontSize: 13, color: Colors.black87),
@@ -403,8 +464,7 @@ class _EditItemPageState extends State<EditItemPage> {
                       ),
                       const SizedBox(height: 18),
 
-                      // ── QTY COUNTER (Gambar 2) ──
-                      _buildLabel('Qty'),
+                      _buildLabel('Jumlah Stok *'),
                       Row(
                         children: [
                           Container(
@@ -414,13 +474,11 @@ class _EditItemPageState extends State<EditItemPage> {
                             ),
                             child: Row(
                               children: [
-                                // Minus
                                 IconButton(
                                   onPressed: () {
                                     if (_quantity > 0) {
                                       setState(() {
                                         _quantity--;
-                                        _recalculateTotalValue();
                                       });
                                     }
                                   },
@@ -428,7 +486,6 @@ class _EditItemPageState extends State<EditItemPage> {
                                   constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
                                   padding: EdgeInsets.zero,
                                 ),
-                                // Value
                                 Container(
                                   width: 50,
                                   alignment: Alignment.center,
@@ -441,7 +498,6 @@ class _EditItemPageState extends State<EditItemPage> {
                                     ),
                                   ),
                                 ),
-                                // Plus
                                 Container(
                                   decoration: const BoxDecoration(
                                     color: Color(0xFF2979FF),
@@ -454,7 +510,6 @@ class _EditItemPageState extends State<EditItemPage> {
                                     onPressed: () {
                                       setState(() {
                                         _quantity++;
-                                        _recalculateTotalValue();
                                       });
                                     },
                                     icon: const Icon(Icons.add, color: Colors.white, size: 20),
@@ -469,24 +524,21 @@ class _EditItemPageState extends State<EditItemPage> {
                       ),
                       const SizedBox(height: 18),
 
-                      // ── PRICE & TOTAL VALUE (Gambar 2 side-by-side) ──
                       Row(
                         children: [
-                          // Price
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                _buildLabel('Price'),
+                                _buildLabel('Harga Jual *'),
                                 TextFormField(
-                                  controller: _priceController,
+                                  controller: _sellingPriceController,
                                   keyboardType: TextInputType.number,
                                   style: const TextStyle(fontSize: 13, color: Colors.black87),
                                   decoration: _inputDecoration(hint: 'Rp. 0'),
-                                  onChanged: (_) => _recalculateTotalValue(),
                                   validator: (value) {
                                     if (value == null || value.trim().isEmpty) {
-                                      return 'Harga kosong';
+                                      return 'Harga jual kosong';
                                     }
                                     return null;
                                   },
@@ -495,30 +547,22 @@ class _EditItemPageState extends State<EditItemPage> {
                             ),
                           ),
                           const SizedBox(width: 14),
-                          // Total Value (Read-Only)
                           Expanded(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                _buildLabel('Total Value'),
-                                Container(
-                                  width: double.infinity,
-                                  height: 48,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFF1F5F9),
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
-                                  ),
-                                  padding: const EdgeInsets.symmetric(horizontal: 14),
-                                  alignment: Alignment.centerLeft,
-                                  child: Text(
-                                    CartManager.formatPrice(_totalValue),
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13,
-                                      color: Color(0xFF64748B),
-                                    ),
-                                  ),
+                                _buildLabel('Harga Beli *'),
+                                TextFormField(
+                                  controller: _capitalPriceController,
+                                  keyboardType: TextInputType.number,
+                                  style: const TextStyle(fontSize: 13, color: Colors.black87),
+                                  decoration: _inputDecoration(hint: 'Rp. 0'),
+                                  validator: (value) {
+                                    if (value == null || value.trim().isEmpty) {
+                                      return 'Harga beli kosong';
+                                    }
+                                    return null;
+                                  },
                                 ),
                               ],
                             ),
@@ -527,33 +571,7 @@ class _EditItemPageState extends State<EditItemPage> {
                       ),
                       const SizedBox(height: 18),
 
-                      // ── WEIGHT ──
-                      _buildLabel('Weight'),
-                      TextFormField(
-                        controller: _weightController,
-                        keyboardType: TextInputType.number,
-                        style: const TextStyle(fontSize: 13, color: Colors.black87),
-                        decoration: _inputDecoration(
-                          hint: 'Masukkan berat',
-                          suffix: Container(
-                            padding: const EdgeInsets.only(left: 8),
-                            child: const Text(
-                              'Gr',
-                              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.grey, fontSize: 13),
-                            ),
-                          ),
-                        ),
-                        validator: (value) {
-                          if (value == null || value.trim().isEmpty) {
-                            return 'Berat kosong';
-                          }
-                          return null;
-                        },
-                      ),
-                      const SizedBox(height: 18),
-
-                      // ── EXP DATE ──
-                      _buildLabel('Exp Date'),
+                      _buildLabel('Tanggal Kadaluarsa (Exp)'),
                       GestureDetector(
                         onTap: () => _selectDate(context),
                         child: AbsorbPointer(
@@ -561,26 +579,19 @@ class _EditItemPageState extends State<EditItemPage> {
                             controller: _expDateController,
                             style: const TextStyle(fontSize: 13, color: Colors.black87),
                             decoration: _inputDecoration(
-                              hint: 'dd/mm/yyyy',
+                              hint: 'dd/mm/yyyy (opsional)',
                               suffix: const Icon(Icons.calendar_month, color: Colors.grey, size: 20),
                             ),
-                            validator: (value) {
-                              if (value == null || value.trim().isEmpty) {
-                                  return 'Exp date kosong';
-                              }
-                              return null;
-                            },
                           ),
                         ),
                       ),
                       const SizedBox(height: 32),
 
-                      // ── SAVE BUTTON ──
                       SizedBox(
                         width: double.infinity,
                         height: 52,
                         child: ElevatedButton(
-                          onPressed: _isSaving ? null : _handleSave,
+                          onPressed: (_isSaving || _isDeleting) ? null : _handleSave,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF2979FF),
                             foregroundColor: Colors.white,
@@ -596,6 +607,33 @@ class _EditItemPageState extends State<EditItemPage> {
                                 )
                               : const Text(
                                   'SIMPAN PERUBAHAN',
+                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 0.5),
+                                ),
+                        ),
+                      ),
+                      
+                      const SizedBox(height: 16),
+                      
+                      // Delete Button
+                      SizedBox(
+                        width: double.infinity,
+                        height: 52,
+                        child: OutlinedButton(
+                          onPressed: (_isSaving || _isDeleting) ? null : _handleDelete,
+                          style: OutlinedButton.styleFrom(
+                            backgroundColor: Colors.white,
+                            foregroundColor: Colors.red,
+                            side: const BorderSide(color: Colors.red, width: 1.5),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                          ),
+                          child: _isDeleting
+                              ? const SizedBox(
+                                  width: 22,
+                                  height: 22,
+                                  child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.red),
+                                )
+                              : const Text(
+                                  'HAPUS PRODUK',
                                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 0.5),
                                 ),
                         ),
@@ -660,7 +698,7 @@ class _EditItemPageState extends State<EditItemPage> {
         content: TextField(
           controller: textController,
           decoration: const InputDecoration(
-            hintText: 'https://example.com/image.jpg',
+            hintText: 'https://example.com/image.jpg (opsional)',
             border: OutlineInputBorder(),
           ),
         ),
@@ -670,6 +708,9 @@ class _EditItemPageState extends State<EditItemPage> {
             onPressed: () {
               setState(() {
                 _imageUrl = textController.text.trim();
+                if (_imageUrl?.isEmpty ?? true) {
+                  _imageUrl = null;
+                }
               });
               Navigator.pop(ctx);
             },
