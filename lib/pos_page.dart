@@ -399,7 +399,76 @@ class _PosPageState extends State<PosPage> {
 
 		if (result == true) {
 			await _refreshAll();
+			if (!mounted) return;
+			setState(() => _selectedTab = 'Riwayat Penjualan');
+			_showSnackBar('Penjualan berhasil dicatat.');
 		}
+	}
+
+	static const List<String> _monthNames = [
+		'Januari',
+		'Februari',
+		'Maret',
+		'April',
+		'Mei',
+		'Juni',
+		'Juli',
+		'Agustus',
+		'September',
+		'Oktober',
+		'November',
+		'Desember',
+	];
+
+	String _monthName(int month) {
+		if (month < 1 || month > 12) return '-';
+		return _monthNames[month - 1];
+	}
+
+	String _historyGroupKey(DateTime date) {
+		switch (_salesTimeframe) {
+			case 'Mingguan':
+				final weekOfMonth = ((date.day - 1) ~/ 7) + 1;
+				return '${date.year}-${date.month.toString().padLeft(2, '0')}-W$weekOfMonth';
+			case 'Bulanan':
+				return '${date.year}-${date.month.toString().padLeft(2, '0')}';
+			case 'Tahunan':
+				return '${date.year}';
+			case 'Harian':
+			default:
+				return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+		}
+	}
+
+	String _historyGroupLabel(DateTime date) {
+		switch (_salesTimeframe) {
+			case 'Mingguan':
+				final weekOfMonth = ((date.day - 1) ~/ 7) + 1;
+				return '${_monthName(date.month)} ${date.year} (Minggu $weekOfMonth)';
+			case 'Bulanan':
+				return '${_monthName(date.month)} ${date.year}';
+			case 'Tahunan':
+				return '${date.year}';
+			case 'Harian':
+			default:
+				return '${date.day} ${_monthName(date.month)} ${date.year}';
+		}
+	}
+
+	Widget _buildHistoryGroupHeader(String label) {
+		return Padding(
+			padding: const EdgeInsets.fromLTRB(0, 6, 0, 10),
+			child: Row(
+				children: [
+					const Icon(Icons.expand_more, size: 18, color: Colors.black87),
+					const SizedBox(width: 8),
+					Text(
+						label,
+						style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+					),
+				],
+			),
+		);
 	}
 
 	Color _stockColor(int qty) {
@@ -945,10 +1014,50 @@ class _PosPageState extends State<PosPage> {
 			},
 		);
 
+		if (_transactions.isEmpty) {
+			return const [
+				SliverToBoxAdapter(
+					child: Padding(
+						padding: EdgeInsets.fromLTRB(16, 24, 16, 0),
+						child: Center(
+							child: Text(
+								'Belum ada riwayat penjualan.',
+								style: TextStyle(fontSize: 14, color: Colors.black54, fontWeight: FontWeight.w600),
+							),
+						),
+					),
+				),
+			];
+		}
+
+		final groupedTransactions = <String, List<Map<String, dynamic>>>{};
+		final groupedLabels = <String, String>{};
+
+		for (final tx in _transactions) {
+			final createdAt = tx['created_at']?.toString();
+			final createdDate = createdAt == null ? null : DateTime.tryParse(createdAt)?.toLocal();
+			final key = createdDate == null ? 'unknown' : _historyGroupKey(createdDate);
+			groupedLabels[key] = createdDate == null ? 'Tanpa Tanggal' : _historyGroupLabel(createdDate);
+			groupedTransactions.putIfAbsent(key, () => []).add(tx);
+		}
+
+		final historyWidgets = <Widget>[];
+		for (final entry in groupedTransactions.entries) {
+			historyWidgets.add(_buildHistoryGroupHeader(groupedLabels[entry.key] ?? 'Tanpa Tanggal'));
+			historyWidgets.addAll(
+				entry.value.map(
+					(tx) => Padding(
+						padding: const EdgeInsets.only(bottom: 12),
+						child: _buildTransactionCard(tx),
+					),
+				),
+			);
+		}
+
 		return [
 			SliverToBoxAdapter(
 				child: Padding(
-					padding: const EdgeInsets.fromLTRB(16, 18, 16, 8),
+					padding: const EdgeInsets.fromLTRB(16, 18, 16, 2),
 					child: Row(
 						children: [
 							Expanded(child: _buildStatCard('Profit', CartManager.formatPrice(totalProfit), const Color(0xFF16A34A))),
@@ -961,31 +1070,43 @@ class _PosPageState extends State<PosPage> {
 			SliverToBoxAdapter(
 				child: Padding(
 					padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
-					child: Wrap(
+					child: Row(
 						spacing: 10,
-						runSpacing: 10,
+						mainAxisAlignment: MainAxisAlignment.spaceBetween,
 						children: _salesTimeframes.map((timeframe) {
 							final selected = _salesTimeframe == timeframe;
-							return ChoiceChip(
-								label: Text(timeframe),
-								selected: selected,
-								onSelected: (_) {
-									setState(() => _salesTimeframe = timeframe);
-								},
+							return Expanded(
+								child: GestureDetector(
+									onTap: () => setState(() => _salesTimeframe = timeframe),
+									child: Container(
+										padding: const EdgeInsets.symmetric(vertical: 6),
+										margin: const EdgeInsets.symmetric(horizontal: 2),
+										decoration: BoxDecoration(
+											color: selected ? const Color(0xFF2979FF) : Colors.white,
+											borderRadius: BorderRadius.circular(999),
+											border: Border.all(color: const Color(0xFF2979FF), width: 1),
+										),
+										child: Text(
+											timeframe,
+											textAlign: TextAlign.center,
+											style: TextStyle(
+												fontSize: 11,
+												fontWeight: FontWeight.w700,
+												color: selected ? Colors.white : const Color(0xFF2979FF),
+											),
+										),
+									),
+								),
 							);
 						}).toList(),
 					),
 				),
 			),
-			SliverPadding(
-				padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-				sliver: SliverList(
-					delegate: SliverChildBuilderDelegate(
-						(context, index) => Padding(
-							padding: const EdgeInsets.only(bottom: 12),
-							child: _buildTransactionCard(_transactions[index]),
-						),
-						childCount: _transactions.length,
+			SliverToBoxAdapter(
+				child: Padding(
+					padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+					child: Column(
+						children: historyWidgets,
 					),
 				),
 			),

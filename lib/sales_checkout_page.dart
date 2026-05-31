@@ -48,7 +48,10 @@ class _SalesCheckoutPageState extends State<SalesCheckoutPage> {
         'status': 'completed',
       }).select().single();
 
-      final transactionId = transactionResponse['id'];
+      final transactionId = transactionResponse['id']?.toString();
+      if (transactionId == null || transactionId.isEmpty) {
+        throw Exception('ID transaksi tidak valid');
+      }
 
       for (final entry in _cart.items.entries) {
         final productId = entry.key;
@@ -63,11 +66,11 @@ class _SalesCheckoutPageState extends State<SalesCheckoutPage> {
         });
 
         final inventoryRow = await supabase
-            .from('inventories')
-            .select('id, qty_available')
-            .eq('user_id', userId)
-            .or('id.eq.$productId,name.eq.${cartItem.productName}')
-            .maybeSingle();
+          .from('inventories')
+          .select('id, qty_available')
+          .eq('user_id', userId)
+          .eq('id', productId)
+          .maybeSingle();
 
         if (inventoryRow != null) {
           final invId = inventoryRow['id'];
@@ -87,8 +90,15 @@ class _SalesCheckoutPageState extends State<SalesCheckoutPage> {
     } catch (e) {
       if (!mounted) return;
       Navigator.of(context).pop();
+      final rawMessage = e.toString();
+      final isRlsError = rawMessage.contains('code: 42501') ||
+          rawMessage.toLowerCase().contains('row-level security policy');
+
+      final message = isRlsError
+          ? 'Gagal menyimpan penjualan: akses database ditolak oleh policy RLS. Jalankan script scripts/fix_sales_rls.sql di Supabase SQL Editor, lalu login ulang.'
+          : 'Gagal menyimpan penjualan: $e';
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Gagal menyimpan penjualan: $e')),
+        SnackBar(content: Text(message)),
       );
     }
   }
