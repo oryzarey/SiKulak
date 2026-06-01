@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'models.dart';
 import 'main.dart';
-import 'cart_manager.dart';
 
 class ProductDetailPage extends StatefulWidget {
   final Product product;
@@ -13,7 +12,6 @@ class ProductDetailPage extends StatefulWidget {
 }
 
 class _ProductDetailPageState extends State<ProductDetailPage> {
-  final CartManager _cart = CartManager();
   bool _isLoading = true;
   List<Map<String, dynamic>> _suppliers = [];
   bool _isWishlisted = false;
@@ -154,6 +152,24 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
     } catch (_) {
       return dateStr;
     }
+  }
+
+  String _formatPrice(double price) {
+    final formatter = price.toStringAsFixed(0);
+    final parts = formatter.split('.');
+    final intPart = parts[0];
+    final stringBuffer = StringBuffer();
+    int count = 0;
+    for (int i = intPart.length - 1; i >= 0; i--) {
+      if (count == 3) {
+        stringBuffer.write('.');
+        count = 0;
+      }
+      stringBuffer.write(intPart[i]);
+      count++;
+    }
+    final reversedStr = stringBuffer.toString().split('').reversed.join('');
+    return 'Rp. $reversedStr';
   }
 
   @override
@@ -320,7 +336,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              CartManager.formatPrice(widget.product.price),
+                              _formatPrice(widget.product.price),
                               style: const TextStyle(
                                 color: Color(0xFF166534),
                                 fontWeight: FontWeight.bold,
@@ -432,35 +448,29 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
           ),
         ],
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(20),
-          onTap: () => _addSupplierProductToCart(name, price),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                // Supplier Logo / Circle
-                Container(
-                  width: 50,
-                  height: 50,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF1F5F9),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Center(
-                    child: Icon(
-                      Icons.storefront,
-                      color: gradeTextColor,
-                      size: 26,
-                    ),
-                  ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            // Supplier Logo / Circle
+            Container(
+              width: 50,
+              height: 50,
+              decoration: BoxDecoration(
+                color: const Color(0xFFF1F5F9),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Center(
+                child: Icon(
+                  Icons.storefront,
+                  color: gradeTextColor,
+                  size: 26,
                 ),
-                const SizedBox(width: 14),
-
-                // Info Section
-                Expanded(
+              ),
+            ),
+            const SizedBox(width: 14),
+            // Info Section
+            Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -500,108 +510,78 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                     ],
                   ),
                 ),
-
-                // Price and Grade Section
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
+            // Price and Grade Section
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  _formatPrice(price),
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: gradeTextColor,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  'Per Box',
+                  style: TextStyle(fontSize: 10, color: Colors.grey[400], fontWeight: FontWeight.w500),
+                ),
+                const SizedBox(height: 10),
+                // Grade Badge Row
+                Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      CartManager.formatPrice(price),
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
+                    // Grade Circle
+                    Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
                         color: gradeTextColor,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: gradeTextColor.withOpacity(0.18),
+                            blurRadius: 6,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: Center(
+                        child: Text(
+                          grade,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Per Box',
-                      style: TextStyle(fontSize: 10, color: Colors.grey[400], fontWeight: FontWeight.w500),
-                    ),
-                    const SizedBox(height: 10),
-                    
-                    // Grade Badge Row
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        // Grade Circle
-                        Container(
-                          width: 34,
-                          height: 34,
-                          decoration: BoxDecoration(
-                            color: gradeTextColor,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: gradeTextColor.withOpacity(0.18),
-                                blurRadius: 6,
-                                offset: const Offset(0, 3),
-                              ),
-                            ],
-                          ),
-                          child: Center(
-                            child: Text(
-                              grade,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                                fontSize: 14,
-                              ),
-                            ),
-                          ),
+                    const SizedBox(width: 8),
+                    // Label container
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: gradeColor,
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      child: Text(
+                        gradeLabel,
+                        style: TextStyle(
+                          color: gradeTextColor,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
                         ),
-                        const SizedBox(width: 8),
-                        // Label container
-                        Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: gradeColor,
-                            borderRadius: BorderRadius.circular(18),
-                          ),
-                          child: Text(
-                            gradeLabel,
-                            style: TextStyle(
-                              color: gradeTextColor,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ],
                 ),
               ],
             ),
-          ),
+          ],
         ),
       ),
     );
-  }
-
-  void _addSupplierProductToCart(String supplierName, double price) {
-    _cart.add(
-      widget.product.id,
-      name: widget.product.name,
-      price: price,
-      imageUrl: widget.product.imageUrl,
-    );
-
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Berhasil menambahkan produk dari $supplierName ke keranjang!',
-          textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 12, color: Colors.white),
-        ),
-        backgroundColor: const Color(0xFF2979FF),
-        elevation: 0,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-        margin: const EdgeInsets.symmetric(horizontal: 40, vertical: 20),
-        duration: const Duration(seconds: 2),
-      ),
-    );
-    setState(() {});
   }
 }

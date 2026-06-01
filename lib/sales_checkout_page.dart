@@ -39,43 +39,50 @@ class _SalesCheckoutPageState extends State<SalesCheckoutPage> {
       if (userId == null) throw Exception('User tidak terautentikasi');
 
       final totalPrice = _cart.totalPrice;
-      final totalProfit = totalPrice * 0.10;
+      final totalProfit = totalPrice * 0.10; // Asumsi profit 10%
 
-      final transactionResponse = await supabase.from('transactions').insert({
+      // 1. Simpan data ke tabel pos_orders (Transaksi Penjualan)
+      final orderResponse = await supabase.from('pos_orders').insert({
         'user_id': userId,
-        'total_price': totalPrice,
+        'invoice_number': 'INV-${DateTime.now().millisecondsSinceEpoch}', // Harus unik
+        'total_gross': totalPrice,
         'total_profit': totalProfit,
-        'status': 'completed',
+        'payment_method': 'cash',   // Sesuai skema
+        'payment_status': 'paid',   // Sesuai skema
       }).select().single();
 
-      final transactionId = transactionResponse['id']?.toString();
-      if (transactionId == null || transactionId.isEmpty) {
-        throw Exception('ID transaksi tidak valid');
+      final orderId = orderResponse['id']?.toString();
+      if (orderId == null || orderId.isEmpty) {
+        throw Exception('ID pesanan tidak valid');
       }
 
+      // 2. Loop keranjang untuk menyimpan detail barang ke pos_order_items
       for (final entry in _cart.items.entries) {
-        final productId = entry.key;
+        final inventoryId = entry.key; // Key dari cart adalah ID dari inventories
         final cartItem = entry.value;
 
-        await supabase.from('transaction_items').insert({
-          'transaction_id': transactionId,
-          'product_id': productId,
-          'quantity': cartItem.quantity,
-          'price_at_purchase': cartItem.price,
-          'profit_at_purchase': cartItem.price * 0.10,
+        await supabase.from('pos_order_items').insert({
+          'order_id': orderId,
+          'inventory_id': inventoryId,
+          'qty': cartItem.quantity,
+          'price_at_sale': cartItem.price,
+          'profit_at_sale': cartItem.price * 0.10,
+          'total_price': cartItem.price * cartItem.quantity,
         });
 
+        // 3. Update stok (kurangi qty_available) di tabel inventories
         final inventoryRow = await supabase
-          .from('inventories')
-          .select('id, qty_available')
-          .eq('user_id', userId)
-          .eq('id', productId)
-          .maybeSingle();
+            .from('inventories')
+            .select('id, qty_available')
+            .eq('user_id', userId)
+            .eq('id', inventoryId)
+            .maybeSingle();
 
         if (inventoryRow != null) {
           final invId = inventoryRow['id'];
           final currentQty = (inventoryRow['qty_available'] as num?)?.toInt() ?? 0;
           final newQty = (currentQty - cartItem.quantity).clamp(0, 999999);
+          
           await supabase.from('inventories').update({
             'qty_available': newQty,
             'updated_at': DateTime.now().toUtc().toIso8601String(),
@@ -85,18 +92,20 @@ class _SalesCheckoutPageState extends State<SalesCheckoutPage> {
 
       _cart.clear();
       if (!mounted) return;
-      Navigator.of(context).pop();
-      Navigator.of(context).pop(true);
+      Navigator.of(context).pop(); // Tutup loading dialog
+      Navigator.of(context).pop(true); // Kembali ke halaman sebelumnya dengan status sukses
     } catch (e) {
       if (!mounted) return;
-      Navigator.of(context).pop();
+      Navigator.of(context).pop(); // Tutup loading dialog
+      
       final rawMessage = e.toString();
       final isRlsError = rawMessage.contains('code: 42501') ||
           rawMessage.toLowerCase().contains('row-level security policy');
 
       final message = isRlsError
-          ? 'Gagal menyimpan penjualan: akses database ditolak oleh policy RLS. Jalankan script scripts/fix_sales_rls.sql di Supabase SQL Editor, lalu login ulang.'
+          ? 'Gagal menyimpan penjualan: akses database ditolak oleh policy RLS. Pastikan RLS untuk pos_orders sudah benar.'
           : 'Gagal menyimpan penjualan: $e';
+          
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(message)),
       );

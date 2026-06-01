@@ -294,6 +294,7 @@ class _PosPageState extends State<PosPage> {
 	Future<void> _fetchTransactions() async {
 		try {
 			final userId = _currentUserId;
+			debugPrint('[SiKulak] _fetchTransactions - userId: $userId');
 			if (userId == null) {
 				if (!mounted) return;
 				setState(() {
@@ -303,20 +304,48 @@ class _PosPageState extends State<PosPage> {
 				return;
 			}
 
-			    final data = await supabase
-				    .from('transactions')
-				    .select('id, total_price, total_profit, status, created_at, transaction_items(*, products(name, price, image_url))')
-				    .eq('user_id', userId)
-				    .order('created_at', ascending: false)
-				    .limit(20);
+			// Fetch pos_orders simple dulu
+			debugPrint('[SiKulak] Fetching pos_orders...');
+			final data = await supabase
+				.from('pos_orders')
+				.select('*')
+				.eq('user_id', userId)
+				.order('created_at', ascending: false)
+				.limit(50);
+
+			debugPrint('[SiKulak] Raw data: $data');
+			debugPrint('[SiKulak] Fetched ${(data as List).length} orders');
+
+			// Untuk setiap order, fetch items
+			final List<Map<String, dynamic>> ordersWithItems = [];
+			for (final order in data as List) {
+				final orderId = order['id'];
+				debugPrint('[SiKulak] Processing order: $orderId');
+				try {
+					final items = await supabase
+						.from('pos_order_items')
+						.select('*, inventories(id, name, image_url)')
+						.eq('order_id', orderId);
+					
+					order['pos_order_items'] = items;
+					debugPrint('[SiKulak] Order $orderId has ${(items as List).length} items');
+				} catch (itemsError) {
+					debugPrint('[SiKulak] Error fetching items for order $orderId: $itemsError');
+					order['pos_order_items'] = [];
+				}
+				ordersWithItems.add(order as Map<String, dynamic>);
+			}
+
+			debugPrint('[SiKulak] Total orders with items: ${ordersWithItems.length}');
 
 			if (!mounted) return;
 			setState(() {
-				_transactions = List<Map<String, dynamic>>.from(data as List);
+				_transactions = ordersWithItems;
 				_isLoadingTransactions = false;
 			});
 		} catch (e) {
 			debugPrint('[SiKulak] Error loading POS transactions: $e');
+			debugPrint('[SiKulak] Stack trace: ${StackTrace.current}');
 			if (!mounted) return;
 			setState(() {
 				_transactions = [];
@@ -472,9 +501,9 @@ class _PosPageState extends State<PosPage> {
 	}
 
 	Color _stockColor(int qty) {
-		if (qty == 0) return const Color(0xFF16A34A);
-		if (qty <= 10) return const Color(0xFF86EFAC);
-		return const Color(0xFF16A34A);
+		if (qty == 0) return const Color(0xFFDC2626); // Merah - Habis
+		if (qty <= 10) return const Color(0xFFEAB308); // Kuning - Stok Rendah
+		return const Color(0xFF16A34A); // Hijau - Tersedia
 	}
 
 	String _stockLabel(int qty) {
@@ -1007,9 +1036,9 @@ class _PosPageState extends State<PosPage> {
 		final itemsSold = _transactions.fold<int>(
 			0,
 			(sum, tx) {
-				final items = tx['transaction_items'] as List? ?? const [];
+				final items = tx['pos_order_items'] as List? ?? const [];
 				return sum + items.fold<int>(0, (itemSum, item) {
-					return itemSum + ((item['quantity'] as num?)?.toInt() ?? 0);
+					return itemSum + ((item['qty'] as num?)?.toInt() ?? 0);
 				});
 			},
 		);
@@ -1116,15 +1145,9 @@ class _PosPageState extends State<PosPage> {
 	Widget _buildTransactionCard(Map<String, dynamic> transaction) {
 		final createdAt = transaction['created_at']?.toString();
 		final createdDate = createdAt == null ? null : DateTime.tryParse(createdAt);
-		final items = transaction['transaction_items'] as List? ?? const [];
-		final txCode = (transaction['code'] ?? transaction['id'] ?? 'TRANSACTION').toString();
-
-		double total = 0;
-		for (final it in items) {
-			final qty = (it['quantity'] as num?)?.toInt() ?? 0;
-			final price = (it['price_at_purchase'] as num?)?.toDouble() ?? 0.0;
-			total += qty * price;
-		}
+		final items = transaction['pos_order_items'] as List? ?? const [];
+		final txCode = (transaction['invoice_number'] ?? transaction['code'] ?? transaction['id'] ?? 'TRANSACTION').toString();
+		final totalGross = (transaction['total_gross'] as num?)?.toDouble() ?? 0.0;
 
 		return Container(
 			margin: const EdgeInsets.only(bottom: 12),
@@ -1158,9 +1181,9 @@ class _PosPageState extends State<PosPage> {
 					const Divider(height: 1),
 					const SizedBox(height: 10),
 					...items.map((it) {
-						final qty = (it['quantity'] as num?)?.toInt() ?? 0;
-						final price = (it['price_at_purchase'] as num?)?.toDouble() ?? 0.0;
-						final productName = (it['products']?['name'] ?? it['product_name'] ?? '').toString();
+						final qty = (it['qty'] as num?)?.toInt() ?? 0;
+						final price = (it['price_at_sale'] as num?)?.toDouble() ?? 0.0;
+						final productName = (it['inventories']?['name'] ?? it['product_name'] ?? 'Produk').toString();
 						return Padding(
 							padding: const EdgeInsets.symmetric(vertical: 6),
 							child: Row(
@@ -1187,7 +1210,7 @@ class _PosPageState extends State<PosPage> {
 							const Expanded(
 								child: Text('TOTAL', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
 							),
-							Text(CartManager.formatPrice(total), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
+							Text(CartManager.formatPrice(totalGross), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
 						],
 					),
 				],
