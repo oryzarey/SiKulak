@@ -38,40 +38,19 @@ class _HomePageState extends State<HomePage> {
   bool _lowStockDialogShownThisSession = false;
   StreamSubscription<AuthState>? _authStateSubscription;
 
-  // Promo carousel
-  late final PageController _promoPageController;
-  int _currentPromoPage = 0;
-  Timer? _promoAutoScrollTimer;
+  // Sales Insights
+  int _outOfStockCount = 0;
+  int _lowStockCount = 0;
+  int _itemsSoldCount = 0;
+  double _totalProfit = 0.0;
+  bool _isProfitVisible = true;
 
-  // Static promo data (no is_promo field in DB)
-  final List<Map<String, String>> _promoData = const [
-    {
-      'title': 'Harga Sabun sedang\nturun sebanyak 30%',
-      'subtitle': 'Tawaran terbatas. Beli sekarang.',
-    },
-    {
-      'title': 'Diskon Detergen\nhingga 25%!',
-      'subtitle': 'Stok terbatas, jangan lewatkan.',
-    },
-    {
-      'title': 'Promo Shampoo\nbeli 2 gratis 1',
-      'subtitle': 'Berlaku untuk semua merek.',
-    },
-    {
-      'title': 'Minyak Goreng Hemat\ndiskon khusus hari ini',
-      'subtitle': 'Maksimal pembelian 2 pcs.',
-    },
-    {
-      'title': 'Bumbu Dapur Lengkap\nharga mulai Rp 1.000',
-      'subtitle': 'Segar setiap hari langsung kirim.',
-    },
-  ];
+
 
   // ── Lifecycle ──────────────────────────────────────────────
   @override
   void initState() {
     super.initState();
-    _promoPageController = PageController(viewportFraction: 1.0);
     _loadData();
     _authStateSubscription = supabase.auth.onAuthStateChange.listen((data) {
       if (!mounted) return;
@@ -81,8 +60,6 @@ class _HomePageState extends State<HomePage> {
 
   @override
   void dispose() {
-    _promoAutoScrollTimer?.cancel();
-    _promoPageController.dispose();
     _authStateSubscription?.cancel();
     super.dispose();
   }
@@ -197,8 +174,8 @@ class _HomePageState extends State<HomePage> {
     // Run independently so one failure doesn't block the others
     _fetchProfile();
     _fetchCategories();
+    _fetchSalesInsights();
     await _fetchProducts();
-    _startPromoAutoScroll();
     if (!_lowStockChecked) {
       _lowStockChecked = true;
       _checkLowStock();
@@ -319,19 +296,62 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  // ── Promo carousel ─────────────────────────────────────────
-  void _startPromoAutoScroll() {
-    _promoAutoScrollTimer?.cancel();
-    _promoAutoScrollTimer = Timer.periodic(const Duration(seconds: 4), (_) {
-      if (!mounted || !_promoPageController.hasClients) return;
-      final next = (_currentPromoPage + 1) % _promoData.length;
-      _promoPageController.animateToPage(
-        next,
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeInOut,
-      );
-    });
+  Future<void> _fetchSalesInsights() async {
+    try {
+      final user = supabase.auth.currentUser;
+      if (user == null) return;
+      final userId = user.id;
+
+      // 1. Fetch inventories for out-of-stock and low stock
+      final inventoriesResponse = await supabase
+          .from('inventories')
+          .select('qty_available')
+          .eq('user_id', userId);
+
+      final invList = inventoriesResponse as List;
+      int outOfStock = 0;
+      int lowStock = 0;
+      for (final item in invList) {
+        final stock = (item['qty_available'] as num?)?.toInt() ?? 0;
+        if (stock == 0) {
+          outOfStock++;
+        } else if (stock <= 5) {
+          lowStock++;
+        }
+      }
+
+      // 2. Fetch transactions & transaction items for items sold and profit
+      final transactionsResponse = await supabase
+          .from('transactions')
+          .select('total_profit, transaction_items(quantity)')
+          .eq('user_id', userId);
+
+      final txList = transactionsResponse as List;
+      double totalProfit = 0.0;
+      int itemsSold = 0;
+
+      for (final tx in txList) {
+        totalProfit += (tx['total_profit'] as num?)?.toDouble() ?? 0.0;
+        final items = tx['transaction_items'] as List? ?? [];
+        for (final item in items) {
+          itemsSold += (item['quantity'] as num?)?.toInt() ?? 0;
+        }
+      }
+
+      if (mounted) {
+        setState(() {
+          _outOfStockCount = outOfStock;
+          _lowStockCount = lowStock;
+          _itemsSoldCount = itemsSold;
+          _totalProfit = totalProfit;
+        });
+      }
+    } catch (e) {
+      debugPrint('[SiKulak] Error fetching sales insights: $e');
+    }
   }
+
+
 
   // ── Filtered products ──────────────────────────────────────
   List<Product> get _filteredProducts {
@@ -918,6 +938,7 @@ class _HomePageState extends State<HomePage> {
           _selectedNavItem = 0;
         });
         _fetchProfile();
+        _fetchSalesInsights();
       }
     } else if (index == 1) {
       setState(() => _selectedNavItem = 1);
@@ -934,6 +955,7 @@ class _HomePageState extends State<HomePage> {
           } else {
             setState(() => _selectedNavItem = 0);
             _fetchProfile();
+            _fetchSalesInsights();
           }
         }
       });
@@ -952,6 +974,7 @@ class _HomePageState extends State<HomePage> {
           } else {
             setState(() => _selectedNavItem = 0);
             _fetchProfile();
+            _fetchSalesInsights();
           }
         }
       });
@@ -970,6 +993,7 @@ class _HomePageState extends State<HomePage> {
           } else {
             setState(() => _selectedNavItem = 0);
             _fetchProfile();
+            _fetchSalesInsights();
           }
         }
       });
@@ -988,6 +1012,7 @@ class _HomePageState extends State<HomePage> {
           } else {
             setState(() => _selectedNavItem = 0);
             _fetchProfile();
+            _fetchSalesInsights();
           }
         }
       });
@@ -1190,94 +1215,124 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
 
-          // ─────────── PROMO BANNER CAROUSEL ───────────
+          // ─────────── SALES ACTIVITY SECTION ───────────
           SliverToBoxAdapter(
-            child: Column(
-              children: [
-                SizedBox(
-                  height: 180,
-                  child: PageView.builder(
-                    controller: _promoPageController,
-                    onPageChanged: (p) =>
-                        setState(() => _currentPromoPage = p),
-                    itemCount: _promoData.length,
-                    itemBuilder: (_, index) {
-                      final promo = _promoData[index];
-                      return Container(
-                        margin: const EdgeInsets.symmetric(
-                            horizontal: 20),
-                        padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [
-                              Color(0xFF1E3A8A),
-                              Color(0xFF3B82F6)
-                            ],
-                          ),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment.start,
-                          mainAxisAlignment:
-                              MainAxisAlignment.center,
-                          children: [
-                            Text(promo['title']!,
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold)),
-                            const SizedBox(height: 8),
-                            Text(promo['subtitle']!,
-                                style: const TextStyle(
-                                    color: Colors.white70)),
-                            const SizedBox(height: 15),
-                            ElevatedButton(
-                              onPressed: () {
-                                Navigator.of(context)
-                                    .push(MaterialPageRoute(
-                                        builder: (_) =>
-                                            const InventoryPage()))
-                                    .then((_) => setState(() {}));
-                              },
-                              style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF1A1A2E),
-                                  foregroundColor: Colors.white,
-                                  elevation: 0,
-                                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  )),
-                              child: const Text('Beli Sekarang',
-                                  style: TextStyle(fontWeight: FontWeight.w600)),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(
-                    _promoData.length,
-                    (i) => AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
-                      margin:
-                          const EdgeInsets.symmetric(horizontal: 4),
-                      width: _currentPromoPage == i ? 24 : 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: _currentPromoPage == i
-                            ? const Color(0xFF2979FF)
-                            : Colors.grey[300],
-                        borderRadius: BorderRadius.circular(4),
-                      ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Sales Activity',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF2979FF),
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 16),
+                  
+                  // Total Keuntungan Card
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF0D3365), Color(0xFF2979FF)],
+                        begin: Alignment.bottomLeft,
+                        end: Alignment.topRight,
+                      ),
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.1),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Total Keuntungan',
+                                style: TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                _isProfitVisible
+                                    ? '${CartManager.formatPrice(_totalProfit)},00'
+                                    : 'Rp. ••••••',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 28,
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.5,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: Icon(
+                            _isProfitVisible
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                            color: Colors.white,
+                            size: 26,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _isProfitVisible = !_isProfitVisible;
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  
+                  // 3 Small Cards Row
+                  Row(
+                    children: [
+                      // Out of Stock Card
+                      Expanded(
+                        child: _buildInsightCard(
+                          title: 'Out of Stock',
+                          titleColor: const Color(0xFFFF5252),
+                          value: '$_outOfStockCount',
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Item Sold Card
+                      Expanded(
+                        child: _buildInsightCard(
+                          title: 'Item Sold',
+                          titleColor: Colors.white,
+                          value: '$_itemsSoldCount',
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Low Stock Card
+                      Expanded(
+                        child: _buildInsightCard(
+                          title: 'Low Stock',
+                          titleColor: const Color(0xFFFFD54F),
+                          value: '$_lowStockCount',
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
 
@@ -1396,6 +1451,70 @@ class _HomePageState extends State<HomePage> {
       bottomNavigationBar: CustomNavBar(
         selectedIndex: _selectedNavItem,
         onItemTapped: _handleTabSelection,
+      ),
+    );
+  }
+
+  Widget _buildInsightCard({
+    required String title,
+    required Color titleColor,
+    required String value,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF092552), Color(0xFF1976D2)],
+          begin: Alignment.bottomLeft,
+          end: Alignment.topRight,
+        ),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              color: titleColor,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 8),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.baseline,
+            textBaseline: TextBaseline.alphabetic,
+            children: [
+              Text(
+                value,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(width: 4),
+              const Text(
+                'Qty',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

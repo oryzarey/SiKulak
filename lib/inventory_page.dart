@@ -68,63 +68,53 @@ class _InventoryPageState extends State<InventoryPage> {
       builder: (context, snapshot) {
         final data = snapshot.data ?? const [];
         final count = data.where((row) => row['is_read'] == false).length;
-        return GestureDetector(
-          onTap: () async {
-            await Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => NotificationPage(
-                  onNotificationsMarkedRead: () {},
-                ),
-              ),
-            );
-          },
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: const Color(0xFFE0E7FF).withValues(alpha: 0.2),
-                ),
-                child: const Center(
-                  child: Icon(Icons.notifications_none_outlined, color: Colors.white, size: 24),
-                ),
-              ),
-              if (count > 0)
-                Positioned(
-                  right: -1,
-                  top: -1,
-                  child: Container(
-                    constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-                    padding: const EdgeInsets.symmetric(horizontal: 3),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFEF4444),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 1.2),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.16),
-                          blurRadius: 6,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            _HeaderIcon(
+              icon: Icons.notifications_none_outlined,
+              onTap: () async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => NotificationPage(
+                      onNotificationsMarkedRead: () {},
                     ),
+                  ),
+                );
+              },
+            ),
+            if (count > 0)
+              Positioned(
+                right: -1,
+                top: -1,
+                child: Container(
+                  constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEF4444),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 1.2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.16),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Center(
                     child: Text(
-                      count > 99 ? '99+' : '$count',
-                      textAlign: TextAlign.center,
+                      '$count',
                       style: const TextStyle(
                         color: Colors.white,
                         fontSize: 9,
                         fontWeight: FontWeight.bold,
-                        height: 1,
                       ),
                     ),
                   ),
                 ),
-            ],
-          ),
+              ),
+          ],
         );
       },
     );
@@ -335,7 +325,7 @@ class _InventoryPageState extends State<InventoryPage> {
             backgroundColor: Colors.transparent,
             elevation: 0,
             pinned: true,
-            toolbarHeight: 120,
+            toolbarHeight: 140,
             automaticallyImplyLeading: false,
             titleSpacing: 0,
             title: StreamBuilder<UserProfile?>(
@@ -350,12 +340,9 @@ class _InventoryPageState extends State<InventoryPage> {
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
                       // User Profile (Top Left)
-                      Container(
+                      _GlassContainer(
                         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.15),
-                          borderRadius: BorderRadius.circular(30),
-                        ),
+                        borderRadius: BorderRadius.circular(30),
                         child: Row(
                           children: [
                             Container(
@@ -363,9 +350,21 @@ class _InventoryPageState extends State<InventoryPage> {
                               height: 36,
                               decoration: const BoxDecoration(
                                 shape: BoxShape.circle,
-                                color: Color(0xFFE2E8F0),
+                                color: Colors.white24,
                               ),
-                              child: const Icon(Icons.person, color: Colors.white, size: 22),
+                              child: profile?.avatarUrl != null && profile!.avatarUrl!.isNotEmpty
+                                  ? ClipOval(
+                                      child: Image.network(
+                                        '${profile.avatarUrl}?t=${profile.updatedAt.millisecondsSinceEpoch}',
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (context, error, stackTrace) {
+                                          return const Icon(Icons.person,
+                                              color: Colors.white, size: 22);
+                                        },
+                                      ),
+                                    )
+                                  : const Icon(Icons.person,
+                                      color: Colors.white, size: 22),
                             ),
                             const SizedBox(width: 10),
                             Column(
@@ -392,10 +391,11 @@ class _InventoryPageState extends State<InventoryPage> {
               }
             ),
             flexibleSpace: ClipRRect(
-              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(30)),
-              child: Container(
-                decoration: const BoxDecoration(
-                  color: Color(0xFF2979FF),
+              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(20)),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: Container(
+                  color: const Color(0xFF2979FF).withValues(alpha: 0.8),
                 ),
               ),
             ),
@@ -735,6 +735,56 @@ class _InventoryPageState extends State<InventoryPage> {
             ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _GlassContainer extends StatelessWidget {
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final BorderRadiusGeometry borderRadius;
+
+  const _GlassContainer({
+    required this.child,
+    this.padding = const EdgeInsets.all(12),
+    this.borderRadius = const BorderRadius.all(Radius.circular(20)),
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: borderRadius,
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+        child: Container(
+          padding: padding,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.15),
+            borderRadius: borderRadius,
+            border: Border.all(
+                color: Colors.white.withValues(alpha: 0.2), width: 1.5),
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+class _HeaderIcon extends StatelessWidget {
+  const _HeaderIcon({required this.icon, required this.onTap});
+  final IconData icon;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: _GlassContainer(
+        padding: EdgeInsets.zero,
+        borderRadius: BorderRadius.circular(50),
+        child: Center(child: Icon(icon, color: Colors.white, size: 24)),
       ),
     );
   }

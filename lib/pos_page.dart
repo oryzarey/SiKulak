@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -77,63 +78,51 @@ class _PosPageState extends State<PosPage> {
 			builder: (context, snapshot) {
 				final data = snapshot.data ?? const [];
 				final count = data.where((row) => row['is_read'] == false).length;
-				return GestureDetector(
-					onTap: () async {
-						await Navigator.of(context).push(
-							MaterialPageRoute(
-								builder: (_) => NotificationPage(onNotificationsMarkedRead: () {}),
-							),
-						);
-					},
-					child: Stack(
-						clipBehavior: Clip.none,
-						alignment: Alignment.center,
-						children: [
-							Container(
-								width: 48,
-								height: 48,
-								decoration: BoxDecoration(
-									shape: BoxShape.circle,
-									color: Colors.white.withValues(alpha: 0.15),
-									border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
-								),
-								child: const Center(
-									child: Icon(Icons.notifications_none_rounded, color: Colors.white, size: 24),
-								),
-							),
-							if (count > 0)
-								Positioned(
-									right: -1,
-									top: -1,
-									child: Container(
-										constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
-										padding: const EdgeInsets.symmetric(horizontal: 3),
-										decoration: BoxDecoration(
-											color: Color(0xFFEF4444),
-											shape: BoxShape.circle,
-											border: Border.all(color: Colors.white, width: 1.2),
-											boxShadow: [
-												BoxShadow(
-													color: Colors.black.withValues(alpha: 0.16),
-													blurRadius: 6,
-													offset: Offset(0, 2),
-												),
-											],
-										),
+				return Stack(
+					clipBehavior: Clip.none,
+					children: [
+						_HeaderIcon(
+							icon: Icons.notifications_none_outlined,
+							onTap: () async {
+								await Navigator.of(context).push(
+									MaterialPageRoute(
+										builder: (_) => NotificationPage(onNotificationsMarkedRead: () {}),
+									),
+								);
+							},
+						),
+						if (count > 0)
+							Positioned(
+								right: -1,
+								top: -1,
+								child: Container(
+									constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+									padding: const EdgeInsets.symmetric(horizontal: 3),
+									decoration: BoxDecoration(
+										color: const Color(0xFFEF4444),
+										shape: BoxShape.circle,
+										border: Border.all(color: Colors.white, width: 1.2),
+										boxShadow: [
+											BoxShadow(
+												color: Colors.black.withValues(alpha: 0.16),
+												blurRadius: 4,
+												offset: const Offset(0, 2),
+											),
+										],
+									),
+									child: Center(
 										child: Text(
-											count > 99 ? '99+' : '$count',
-											textAlign: TextAlign.center,
+											'$count',
 											style: const TextStyle(
 												color: Colors.white,
 												fontSize: 9,
 												fontWeight: FontWeight.bold,
-												height: 1,
 											),
 										),
 									),
 								),
-						],
-					),
+							),
+					],
 				);
 			},
 		);
@@ -202,6 +191,16 @@ class _PosPageState extends State<PosPage> {
 		} catch (_) {
 			_setUserNameFromAuth();
 		}
+	}
+
+	Stream<UserProfile?> _profileStream() {
+		final userId = _currentUserId;
+		if (userId == null) return const Stream.empty();
+		return supabase
+				.from('profiles')
+				.stream(primaryKey: ['id'])
+				.eq('id', userId)
+				.map((data) => data.isNotEmpty ? UserProfile.fromJson(data.first) : null);
 	}
 
 	void _setUserNameFromAuth() {
@@ -518,84 +517,93 @@ class _PosPageState extends State<PosPage> {
 		return '$day/$month/${local.year} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
 	}
 
-	Widget _buildHeader() {
-		return Container(
-			padding: const EdgeInsets.fromLTRB(16, 18, 16, 22),
-			decoration: const BoxDecoration(
-				gradient: LinearGradient(
-					colors: [Color(0xFF2979FF), Color(0xFF4C9BFF)],
-					begin: Alignment.topCenter,
-					end: Alignment.bottomCenter,
-				),
-			),
-			child: SafeArea(
-				bottom: false,
-				child: Column(
-					crossAxisAlignment: CrossAxisAlignment.start,
-					children: [
-						const Text(
-							'POS - Stock',
-							style: TextStyle(
-								color: Colors.white70,
-								fontSize: 13,
-								fontWeight: FontWeight.w500,
-							),
-						),
-						const SizedBox(height: 14),
-						Row(
+	Widget _buildSliverAppBar() {
+		return SliverAppBar(
+			backgroundColor: Colors.transparent,
+			elevation: 0,
+			pinned: true,
+			toolbarHeight: 140,
+			automaticallyImplyLeading: false,
+			titleSpacing: 0,
+			title: StreamBuilder<UserProfile?>(
+				stream: _profileStream(),
+				builder: (context, snapshot) {
+					final profile = snapshot.data;
+					final userName = profile?.fullName ?? _userName;
+					final avatarUrl = profile?.avatarUrl;
+
+					return Container(
+						padding: const EdgeInsets.only(top: 15, left: 20, right: 20),
+						child: Row(
+							mainAxisAlignment: MainAxisAlignment.spaceBetween,
 							children: [
-								Expanded(
-									child: Container(
-										padding: const EdgeInsets.all(14),
-										decoration: BoxDecoration(
-											color: Colors.white.withValues(alpha: 0.18),
-											borderRadius: BorderRadius.circular(16),
-											border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
-										),
-										child: Row(
-											children: [
-												Container(
-													width: 32,
-													height: 32,
-													decoration: BoxDecoration(
-														color: Colors.white.withValues(alpha: 0.85),
-														shape: BoxShape.circle,
-													),
+								// User Profile (Top Left)
+								_GlassContainer(
+									padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+									borderRadius: BorderRadius.circular(30),
+									child: Row(
+										children: [
+											Container(
+												width: 36,
+												height: 36,
+												decoration: const BoxDecoration(
+													shape: BoxShape.circle,
+													color: Colors.white24,
 												),
-												const SizedBox(width: 12),
-												Expanded(
-													child: Column(
-														crossAxisAlignment: CrossAxisAlignment.start,
-														children: [
-															const Text(
-																'Selamat datang',
-																style: TextStyle(
-																	color: Colors.white,
-																	fontSize: 12,
-																	fontWeight: FontWeight.w600,
+												child: avatarUrl != null && avatarUrl.isNotEmpty
+														? ClipOval(
+																child: Image.network(
+																	'$avatarUrl?t=${profile?.updatedAt.millisecondsSinceEpoch ?? DateTime.now().millisecondsSinceEpoch}',
+																	fit: BoxFit.cover,
+																	errorBuilder: (context, error, stackTrace) {
+																		return const Icon(Icons.person,
+																				color: Colors.white, size: 22);
+																	},
 																),
-															),
-															Text(
-																_userName,
-																style: const TextStyle(
-																	color: Colors.white,
-																	fontSize: 14,
-																	fontWeight: FontWeight.w700,
-																),
-																overflow: TextOverflow.ellipsis,
-															),
-														],
+															)
+														: const Icon(Icons.person,
+																color: Colors.white, size: 22),
+											),
+											const SizedBox(width: 10),
+											Column(
+												crossAxisAlignment: CrossAxisAlignment.start,
+												mainAxisSize: MainAxisSize.min,
+												children: [
+													const Text(
+														'Selamat datang,',
+														style: TextStyle(
+															color: Colors.white70,
+															fontSize: 11,
+														),
 													),
-												),
-											],
-										),
+													Text(
+														userName,
+														style: const TextStyle(
+															color: Colors.white,
+															fontSize: 14,
+															fontWeight: FontWeight.bold,
+														),
+														overflow: TextOverflow.ellipsis,
+													),
+												],
+											),
+										],
 									),
 								),
-								const SizedBox(width: 10),
+								// Notification (Top Right)
 								_buildNotificationBadgeIcon(),
 							],
 						),
-					],
+					);
+				}
+			),
+			flexibleSpace: ClipRRect(
+				borderRadius: const BorderRadius.vertical(bottom: Radius.circular(20)),
+				child: BackdropFilter(
+					filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+					child: Container(
+						color: const Color(0xFF2979FF).withValues(alpha: 0.8),
+					),
 				),
 			),
 		);
@@ -1294,13 +1302,14 @@ class _PosPageState extends State<PosPage> {
 
 		return Scaffold(
 			extendBody: true,
+			extendBodyBehindAppBar: true,
 			backgroundColor: const Color(0xFFF1F5F9),
 			body: RefreshIndicator(
 				onRefresh: _refreshAll,
 				child: CustomScrollView(
 					physics: const AlwaysScrollableScrollPhysics(),
 					slivers: [
-						SliverToBoxAdapter(child: _buildHeader()),
+						_buildSliverAppBar(),
 						SliverToBoxAdapter(child: _buildSearchPanel()),
 						...bodySlivers,
 						const SliverToBoxAdapter(child: SizedBox(height: 110)),
@@ -1319,6 +1328,56 @@ class _PosPageState extends State<PosPage> {
 						},
 					),
 				],
+			),
+		);
+	}
+}
+
+class _GlassContainer extends StatelessWidget {
+	final Widget child;
+	final EdgeInsetsGeometry padding;
+	final BorderRadiusGeometry borderRadius;
+
+	const _GlassContainer({
+		required this.child,
+		this.padding = const EdgeInsets.all(12),
+		this.borderRadius = const BorderRadius.all(Radius.circular(20)),
+	});
+
+	@override
+	Widget build(BuildContext context) {
+		return ClipRRect(
+			borderRadius: borderRadius,
+			child: BackdropFilter(
+				filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+				child: Container(
+					padding: padding,
+					decoration: BoxDecoration(
+						color: Colors.white.withValues(alpha: 0.15),
+						borderRadius: borderRadius,
+						border: Border.all(
+							color: Colors.white.withValues(alpha: 0.2), width: 1.5),
+					),
+					child: child,
+				),
+			),
+		);
+	}
+}
+
+class _HeaderIcon extends StatelessWidget {
+	const _HeaderIcon({required this.icon, required this.onTap});
+	final IconData icon;
+	final VoidCallback onTap;
+
+	@override
+	Widget build(BuildContext context) {
+		return GestureDetector(
+			onTap: onTap,
+			child: _GlassContainer(
+				padding: EdgeInsets.zero,
+				borderRadius: BorderRadius.circular(50),
+				child: Center(child: Icon(icon, color: Colors.white, size: 24)),
 			),
 		);
 	}

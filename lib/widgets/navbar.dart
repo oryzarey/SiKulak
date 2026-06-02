@@ -55,6 +55,23 @@ class _CustomNavBarState extends State<CustomNavBar> with SingleTickerProviderSt
     }
   }
 
+  String _getLabel(int index) {
+    switch (index) {
+      case 0:
+        return 'Home';
+      case 1:
+        return 'Inventory';
+      case 2:
+        return 'POS';
+      case 3:
+        return 'Dashboard';
+      case 4:
+        return 'Profile';
+      default:
+        return '';
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -108,74 +125,114 @@ class _CustomNavBarState extends State<CustomNavBar> with SingleTickerProviderSt
                 final double iconScale = ((_animation.value - 0.5).abs() * 2.0).clamp(0.0, 1.0);
 
                 return SizedBox(
-                  height: 56,
+                  height: 90,
                   child: Stack(
                     clipBehavior: Clip.none,
                     children: [
-                      // Animated background paint
-                      CustomPaint(
-                        size: Size(w, 56),
-                        painter: NavBarPainter(
-                          color: const Color(0xFF2979FF),
-                        ),
-                      ),
-
-                      // Animated active white circular container
+                      // 1. Animated background paint positioned at bottom
                       Positioned(
-                        left: animCenterX - 24,
-                        bottom: 4,
-                        child: Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.1),
-                                blurRadius: 4,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Center(
-                            child: Transform.scale(
-                              scale: iconScale,
-                              child: Icon(
-                                _getSelectedIcon(currentIconIndex),
-                                color: const Color(0xFF2979FF),
-                                size: 26,
-                              ),
-                            ),
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        height: 60,
+                        child: CustomPaint(
+                          size: Size(w, 60),
+                          painter: NavBarPainter(
+                            color: const Color(0xFF2979FF),
                           ),
                         ),
                       ),
 
-                      // Row of buttons (clicks are handled here)
-                      Row(
-                        children: List.generate(5, (index) {
-                          final distance = (index - animIndexValue).abs();
-                          final opacity = distance.clamp(0.0, 1.0);
+                      // 2. Row of buttons (clicks and labels are handled here)
+                      Positioned(
+                        bottom: 0,
+                        left: 0,
+                        right: 0,
+                        height: 60,
+                        child: Row(
+                          children: List.generate(5, (index) {
+                            final distance = (index - animIndexValue).abs();
+                            final opacity = distance.clamp(0.0, 1.0);
 
-                          return SizedBox(
-                            width: tabWidth,
-                            height: 56,
-                            child: GestureDetector(
-                              onTap: () => widget.onItemTapped(index),
-                              behavior: HitTestBehavior.opaque,
-                              child: Center(
+                            return SizedBox(
+                              width: tabWidth,
+                              height: 60,
+                              child: GestureDetector(
+                                onTap: () => widget.onItemTapped(index),
+                                behavior: HitTestBehavior.opaque,
                                 child: Opacity(
                                   opacity: opacity,
-                                  child: Icon(
-                                    _getUnselectedIcon(index),
-                                    color: Colors.white.withValues(alpha: 0.9),
-                                    size: 26,
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      const SizedBox(height: 4),
+                                      // Icon container
+                                      SizedBox(
+                                        height: 24,
+                                        child: Icon(
+                                          _getUnselectedIcon(index),
+                                          color: Colors.white.withValues(alpha: 0.9),
+                                          size: 22,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      // Text label
+                                      Text(
+                                        _getLabel(index),
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                    ],
                                   ),
                                 ),
                               ),
+                            );
+                          }),
+                        ),
+                      ),
+
+                      // 3. Animated active white circular container (drawn on top of the Row)
+                      Positioned(
+                        left: animCenterX - 30,
+                        bottom: 22,
+                        child: IgnorePointer(
+                          child: Container(
+                            width: 60,
+                            height: 60,
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              shape: BoxShape.circle,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withValues(alpha: 0.12),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 6),
+                                ),
+                                BoxShadow(
+                                  color: const Color(0xFF2979FF).withValues(alpha: 0.24),
+                                  blurRadius: 16,
+                                  spreadRadius: -1,
+                                  offset: const Offset(0, 8),
+                                ),
+                              ],
                             ),
-                          );
-                        }),
+                            child: Center(
+                              child: Transform.scale(
+                                scale: iconScale,
+                                child: Icon(
+                                  _getSelectedIcon(currentIconIndex),
+                                  color: const Color(0xFF2979FF),
+                                  size: 28,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                     ],
                   ),
