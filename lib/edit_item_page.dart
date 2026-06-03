@@ -1,4 +1,7 @@
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'main.dart';
 import 'models.dart';
 
@@ -27,8 +30,10 @@ class _EditItemPageState extends State<EditItemPage> {
   
   int _quantity = 1;
   String? _imageUrl;
+  Uint8List? _selectedImageBytes;
   bool _isSaving = false;
   bool _isDeleting = false;
+  bool _isUploadingImage = false;
   
   DateTime? _selectedDate;
 
@@ -71,7 +76,6 @@ class _EditItemPageState extends State<EditItemPage> {
           _capitalPriceController.text = ((response['capital_price'] as num?)?.toDouble() ?? 0).toStringAsFixed(0);
           _nameController.text = (response['name'] ?? widget.product.name) as String;
           _imageUrl = response['image_url'] as String? ?? widget.product.imageUrl;
-          
           
           if (response['exp_date'] != null) {
             final parsedDate = DateTime.tryParse(response['exp_date'].toString());
@@ -116,6 +120,77 @@ class _EditItemPageState extends State<EditItemPage> {
         _selectedDate = picked;
         _expDateController.text = _formatDate(picked);
       });
+    }
+  }
+
+  Future<void> _pickImage() async {
+    final ImagePicker picker = ImagePicker();
+    try {
+      final XFile? image = await picker.pickImage(
+        source: ImageSource.gallery,
+        imageQuality: 80,
+      );
+      
+      if (image != null) {
+        setState(() {
+          _isUploadingImage = true;
+        });
+        
+        final bytes = await image.readAsBytes();
+        final imageUrl = await _uploadImageToStorage(bytes);
+        
+        setState(() {
+          _selectedImageBytes = bytes;
+          _imageUrl = imageUrl;
+          _isUploadingImage = false;
+        });
+        
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Foto berhasil diupload'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() {
+        _isUploadingImage = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error picking image: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  Future<String> _uploadImageToStorage(Uint8List imageBytes) async {
+    try {
+      final supabase = Supabase.instance.client;
+      final userId = supabase.auth.currentUser?.id;
+      
+      if (userId == null) {
+        throw Exception('User not authenticated');
+      }
+      
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final fileName = 'product_${userId}_$timestamp.jpg';
+      final filePath = 'products/$userId/$fileName';
+      
+      await supabase.storage.from('product_image').uploadBinary(
+            filePath,
+            imageBytes,
+            fileOptions: const FileOptions(upsert: true),
+          );
+      
+      final publicUrl = supabase.storage.from('product_image').getPublicUrl(filePath);
+      
+      return publicUrl;
+    } catch (e) {
+      print('Error uploading image: $e');
+      rethrow;
     }
   }
 
@@ -388,7 +463,7 @@ class _EditItemPageState extends State<EditItemPage> {
                       ),
                       const SizedBox(height: 8),
                       GestureDetector(
-                        onTap: _showMockImageInputDialog,
+                        onTap: _isUploadingImage ? null : _pickImage,
                         child: Container(
                           height: 110,
                           width: double.infinity,
@@ -401,42 +476,82 @@ class _EditItemPageState extends State<EditItemPage> {
                               style: BorderStyle.solid,
                             ),
                           ),
-                          child: _imageUrl != null && _imageUrl!.isNotEmpty
-                              ? ClipRRect(
-                                  borderRadius: BorderRadius.circular(16),
-                                  child: Stack(
-                                    fit: StackFit.expand,
+                          child: _isUploadingImage
+                              ? const Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
-                                      Image.network(_imageUrl!, fit: BoxFit.cover),
-                                      Container(
-                                        color: Colors.black.withValues(alpha: 0.3),
-                                        child: const Center(
-                                          child: Icon(Icons.edit, color: Colors.white, size: 28),
+                                      SizedBox(
+                                        width: 24,
+                                        height: 24,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Color(0xFF2979FF),
+                                        ),
+                                      ),
+                                      SizedBox(height: 8),
+                                      Text(
+                                        'Uploading...',
+                                        style: TextStyle(
+                                          color: Color(0xFF2979FF),
+                                          fontSize: 12,
                                         ),
                                       ),
                                     ],
                                   ),
                                 )
-                              : const Column(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(Icons.add_circle, color: Color(0xFF2979FF), size: 28),
-                                    SizedBox(height: 8),
-                                    Text(
-                                      'Tambahkan Foto',
-                                      style: TextStyle(
-                                        color: Color(0xFF2979FF),
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 13,
+                              : _selectedImageBytes != null
+                                  ? ClipRRect(
+                                      borderRadius: BorderRadius.circular(16),
+                                      child: Stack(
+                                        fit: StackFit.expand,
+                                        children: [
+                                          Image.memory(_selectedImageBytes!, fit: BoxFit.cover),
+                                          Container(
+                                            color: Colors.black.withValues(alpha: 0.3),
+                                            child: const Center(
+                                              child: Icon(Icons.edit, color: Colors.white, size: 28),
+                                            ),
+                                          ),
+                                        ],
                                       ),
-                                    ),
-                                  ],
-                                ),
+                                    )
+                                  : _imageUrl != null && _imageUrl!.isNotEmpty
+                                      ? ClipRRect(
+                                          borderRadius: BorderRadius.circular(16),
+                                          child: Stack(
+                                            fit: StackFit.expand,
+                                            children: [
+                                              Image.network(_imageUrl!, fit: BoxFit.cover),
+                                              Container(
+                                                color: Colors.black.withValues(alpha: 0.3),
+                                                child: const Center(
+                                                  child: Icon(Icons.edit, color: Colors.white, size: 28),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        )
+                                      : const Column(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Icon(Icons.add_circle, color: Color(0xFF2979FF), size: 28),
+                                            SizedBox(height: 8),
+                                            Text(
+                                              'Tambahkan Foto',
+                                              style: TextStyle(
+                                                color: Color(0xFF2979FF),
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 13,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                         ),
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        'Ukuran max. 10 MB (Opsional)',
+                        'Pilih foto dari galeri (Opsional, max 10 MB)',
                         style: TextStyle(fontSize: 11, color: Colors.grey[400], fontWeight: FontWeight.w500),
                       ),
                       const Divider(height: 36),
@@ -592,7 +707,7 @@ class _EditItemPageState extends State<EditItemPage> {
                         width: double.infinity,
                         height: 52,
                         child: ElevatedButton(
-                          onPressed: (_isSaving || _isDeleting) ? null : _handleSave,
+                          onPressed: (_isSaving || _isDeleting || _isUploadingImage) ? null : _handleSave,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF2979FF),
                             foregroundColor: Colors.white,
@@ -620,7 +735,7 @@ class _EditItemPageState extends State<EditItemPage> {
                         width: double.infinity,
                         height: 52,
                         child: OutlinedButton(
-                          onPressed: (_isSaving || _isDeleting) ? null : _handleDelete,
+                          onPressed: (_isSaving || _isDeleting || _isUploadingImage) ? null : _handleDelete,
                           style: OutlinedButton.styleFrom(
                             backgroundColor: Colors.white,
                             foregroundColor: Colors.red,
@@ -686,40 +801,6 @@ class _EditItemPageState extends State<EditItemPage> {
         borderSide: const BorderSide(color: Colors.red, width: 2),
       ),
       contentPadding: const EdgeInsets.symmetric(vertical: 14, horizontal: 16),
-    );
-  }
-
-  void _showMockImageInputDialog() {
-    final textController = TextEditingController(text: _imageUrl);
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Masukkan URL Foto'),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        content: TextField(
-          controller: textController,
-          decoration: const InputDecoration(
-            hintText: 'https://example.com/image.jpg (opsional)',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Batal')),
-          ElevatedButton(
-            onPressed: () {
-              setState(() {
-                _imageUrl = textController.text.trim();
-                if (_imageUrl?.isEmpty ?? true) {
-                  _imageUrl = null;
-                }
-              });
-              Navigator.pop(ctx);
-            },
-            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF2979FF)),
-            child: const Text('Simpan'),
-          ),
-        ],
-      ),
     );
   }
 }
