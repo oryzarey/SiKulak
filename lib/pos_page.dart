@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'cart_manager.dart';
 import 'main.dart';
@@ -26,9 +25,12 @@ class _PosPageState extends State<PosPage> {
 	StreamSubscription? _authStateSubscription;
 	List<InventoryItem> _inventoryItems = [];
 	List<Map<String, dynamic>> _transactions = [];
+	List<Map<String, dynamic>> _bestSellers = [];
+	Map<String, int> _salesCountMap = {};
 
 	bool _isLoadingInventory = true;
 	bool _isLoadingTransactions = true;
+	bool _isLoadingBestSellers = true;
 	bool _isRefreshing = false;
 	String? _errorMessage;
 	String _userName = 'User';
@@ -144,6 +146,7 @@ class _PosPageState extends State<PosPage> {
 			_fetchProfile(),
 			_fetchInventoryItems(),
 			_fetchTransactions(),
+			_fetchBestSellers(),
 		]);
 	}
 
@@ -353,6 +356,85 @@ class _PosPageState extends State<PosPage> {
 		}
 	}
 
+	Future<void> _fetchBestSellers() async {
+		try {
+			final userId = _currentUserId;
+			if (userId == null) {
+				if (!mounted) return;
+				setState(() {
+					_bestSellers = [];
+					_salesCountMap = {};
+					_isLoadingBestSellers = false;
+				});
+				return;
+			}
+
+			// Fetch all pos_order_items for this user's orders
+			final data = await supabase
+					.from('pos_order_items')
+					.select('qty, inventories!inner(id, name, image_url, selling_price, qty_available, user_id, lead_time)')
+					.eq('inventories.user_id', userId);
+
+			final List<Map<String, dynamic>> itemsList = List<Map<String, dynamic>>.from(data as List);
+
+			// Group by inventory_id and sum qty
+			final Map<String, Map<String, dynamic>> grouped = {};
+			final Map<String, int> salesMap = {};
+			for (final item in itemsList) {
+				final inv = item['inventories'] as Map<String, dynamic>?;
+				if (inv == null) continue;
+
+				final String id = inv['id']?.toString() ?? '';
+				if (id.isEmpty) continue;
+
+				final int qty = (item['qty'] as num?)?.toInt() ?? 0;
+				salesMap[id] = (salesMap[id] ?? 0) + qty;
+
+				if (grouped.containsKey(id)) {
+					grouped[id]!['total_sold'] = (grouped[id]!['total_sold'] as int) + qty;
+				} else {
+					grouped[id] = {
+						'id': id,
+						'name': inv['name']?.toString() ?? 'Produk',
+						'image_url': inv['image_url']?.toString(),
+						'selling_price': (inv['selling_price'] as num?)?.toDouble() ?? 0.0,
+						'qty_available': (inv['qty_available'] as num?)?.toInt() ?? 0,
+						'lead_time': (inv['lead_time'] as num?)?.toInt() ?? 3,
+						'total_sold': qty,
+					};
+				}
+			}
+
+			// Convert to list and sort by total_sold descending
+			final sortedList = grouped.values.toList()
+				..sort((a, b) => (b['total_sold'] as int).compareTo(a['total_sold'] as int));
+
+			if (!mounted) return;
+			setState(() {
+				_salesCountMap = salesMap;
+				_bestSellers = sortedList;
+				_isLoadingBestSellers = false;
+			});
+		} catch (e) {
+			debugPrint('[SiKulak] Error loading best sellers: $e');
+			if (!mounted) return;
+			setState(() {
+				_bestSellers = [];
+				_salesCountMap = {};
+				_isLoadingBestSellers = false;
+			});
+		}
+	}
+
+	List<Map<String, dynamic>> get _filteredBestSellers {
+		final query = _searchController.text.trim().toLowerCase();
+		if (query.isEmpty) return _bestSellers;
+		return _bestSellers.where((item) {
+			final name = (item['name'] as String? ?? '').toLowerCase();
+			return name.contains(query);
+		}).toList();
+	}
+
 	void _onSearchChanged(String value) {
 		_debounce?.cancel();
 		_debounce = Timer(const Duration(milliseconds: 250), () {
@@ -362,7 +444,7 @@ class _PosPageState extends State<PosPage> {
 
 	List<InventoryItem> get _filteredItems {
 		final query = _searchController.text.trim().toLowerCase();
-		return _inventoryItems.where((item) {
+		final filtered = _inventoryItems.where((item) {
 			final matchesQuery = query.isEmpty || item.name.toLowerCase().contains(query);
 			final matchesFilter = switch (_stockFilter) {
 				'Stok Tersedia' => item.qtyAvailable > 10,
@@ -372,6 +454,17 @@ class _PosPageState extends State<PosPage> {
 			};
 			return matchesQuery && matchesFilter;
 		}).toList();
+
+		filtered.sort((a, b) {
+			final aSales = _salesCountMap[a.id] ?? 0;
+			final bSales = _salesCountMap[b.id] ?? 0;
+			if (aSales != bSales) {
+				return bSales.compareTo(aSales);
+			}
+			return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+		});
+
+		return filtered;
 	}
 
 	int get _lowStockCount =>
@@ -510,12 +603,6 @@ class _PosPageState extends State<PosPage> {
 		return '$qty Sachet';
 	}
 
-	String _formatDateTime(DateTime dateTime) {
-		final local = dateTime.toLocal();
-		final day = local.day.toString().padLeft(2, '0');
-		final month = local.month.toString().padLeft(2, '0');
-		return '$day/$month/${local.year} ${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
-	}
 
 	Widget _buildSliverAppBar() {
 		return SliverAppBar(
@@ -664,10 +751,16 @@ class _PosPageState extends State<PosPage> {
 									setState(() => _selectedTab = 'Stock');
 								}),
 							),
-							const SizedBox(width: 12),
+							const SizedBox(width: 8),
 							Expanded(
 								child: _buildTabButton('Riwayat Penjualan', _selectedTab == 'Riwayat Penjualan', () {
 									setState(() => _selectedTab = 'Riwayat Penjualan');
+								}),
+							),
+							const SizedBox(width: 8),
+							Expanded(
+								child: _buildTabButton('Sering Terjual', _selectedTab == 'Sering Terjual', () {
+									setState(() => _selectedTab = 'Sering Terjual');
 								}),
 							),
 						],
@@ -682,7 +775,7 @@ class _PosPageState extends State<PosPage> {
 			onTap: onTap,
 			child: AnimatedContainer(
 				duration: const Duration(milliseconds: 220),
-				padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 18),
+				padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 4),
 				decoration: BoxDecoration(
 					color: isSelected ? const Color(0xFF2979FF) : Colors.white,
 					borderRadius: BorderRadius.circular(999),
@@ -690,14 +783,14 @@ class _PosPageState extends State<PosPage> {
 					boxShadow: isSelected
 						? [
 							BoxShadow(
-								color: const Color(0xFF2979FF).withOpacity(0.16),
+								color: const Color(0xFF2979FF).withValues(alpha: 0.16),
 								blurRadius: 10,
 								offset: const Offset(0, 6),
 							),
 						]
 						: [
 							BoxShadow(
-								color: Colors.black.withOpacity(0.03),
+								color: Colors.black.withValues(alpha: 0.03),
 								blurRadius: 6,
 								offset: const Offset(0, 2),
 							),
@@ -708,7 +801,7 @@ class _PosPageState extends State<PosPage> {
 					textAlign: TextAlign.center,
 					style: TextStyle(
 						color: isSelected ? Colors.white : const Color(0xFF2979FF),
-						fontSize: 14,
+						fontSize: 12,
 						fontWeight: FontWeight.w800,
 					),
 				),
@@ -1164,7 +1257,7 @@ class _PosPageState extends State<PosPage> {
 				color: Colors.white,
 				borderRadius: BorderRadius.circular(12),
 				boxShadow: [
-					BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4)),
+					BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 10, offset: const Offset(0, 4)),
 				],
 			),
 			child: Column(
@@ -1198,7 +1291,7 @@ class _PosPageState extends State<PosPage> {
 								children: [
 									Expanded(
 										child: Text(
-											'${qty}x ${productName}',
+											'${qty}x $productName',
 											style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
 										),
 									),
@@ -1209,7 +1302,7 @@ class _PosPageState extends State<PosPage> {
 								],
 							),
 						);
-					}).toList(),
+					}),
 					const SizedBox(height: 8),
 					const Divider(height: 1),
 					const SizedBox(height: 8),
@@ -1226,19 +1319,6 @@ class _PosPageState extends State<PosPage> {
 		);
 	}
 
-	Widget _buildMiniChip(String label) {
-		return Container(
-			padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-			decoration: BoxDecoration(
-				color: const Color(0xFFEFF6FF),
-				borderRadius: BorderRadius.circular(999),
-			),
-			child: Text(
-				label,
-				style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF1D4ED8)),
-			),
-		);
-	}
 
 	Widget _buildCheckoutBar() {
 		return Padding(
@@ -1296,9 +1376,212 @@ class _PosPageState extends State<PosPage> {
 		);
 	}
 
+	Widget _buildBestSellerCard(int rank, Map<String, dynamic> item) {
+		final name = item['name'] as String? ?? 'Produk';
+		final imageUrl = item['image_url'] as String?;
+		final sellingPrice = item['selling_price'] as double? ?? 0.0;
+		final qtyAvailable = item['qty_available'] as int? ?? 0;
+		final totalSold = item['total_sold'] as int? ?? 0;
+		final leadTime = item['lead_time'] as int? ?? 3;
+		final hasImage = (imageUrl ?? '').trim().isNotEmpty;
+
+		final Color rankColor = switch (rank) {
+			1 => const Color(0xFFFFD700), // Emas
+			2 => const Color(0xFFC0C0C0), // Perak
+			3 => const Color(0xFFCD7F32), // Perunggu
+			_ => const Color(0xFF64748B), // Slate/Grey
+		};
+
+		final String rankLabel = '#$rank';
+
+		Color getStockColor(int qty) {
+			if (qty == 0) return const Color(0xFFDC2626); // Merah
+			if (qty <= leadTime) return const Color(0xFFEAB308); // Kuning
+			return const Color(0xFF16A34A); // Hijau
+		}
+
+		return Container(
+			padding: const EdgeInsets.all(12),
+			decoration: BoxDecoration(
+				color: Colors.white,
+				borderRadius: BorderRadius.circular(18),
+				boxShadow: [
+					BoxShadow(
+						color: Colors.black.withValues(alpha: 0.08),
+						blurRadius: 14,
+						offset: const Offset(0, 6),
+					),
+				],
+			),
+			child: Row(
+				children: [
+					Container(
+						width: 52,
+						height: 48,
+						alignment: Alignment.center,
+						decoration: BoxDecoration(
+							color: rankColor.withValues(alpha: 0.15),
+							borderRadius: BorderRadius.circular(12),
+							border: Border.all(color: rankColor.withValues(alpha: 0.6), width: 1.5),
+						),
+						child: Text(
+							rankLabel,
+							style: TextStyle(
+								fontSize: rank <= 3 ? 11 : 13,
+								fontWeight: FontWeight.bold,
+								color: rankColor,
+							),
+						),
+					),
+					const SizedBox(width: 12),
+					Container(
+						width: 64,
+						height: 64,
+						decoration: BoxDecoration(
+							color: const Color(0xFFF1F5F9),
+							borderRadius: BorderRadius.circular(12),
+						),
+						child: hasImage
+								? ClipRRect(
+										borderRadius: BorderRadius.circular(12),
+										child: Image.network(
+											imageUrl!,
+											fit: BoxFit.cover,
+											errorBuilder: (_, __, ___) => const Icon(Icons.inventory_2_rounded, color: Color(0xFF94A3B8)),
+										),
+									)
+								: const Icon(Icons.inventory_2_rounded, color: Color(0xFF94A3B8)),
+					),
+					const SizedBox(width: 12),
+					Expanded(
+						child: Column(
+							crossAxisAlignment: CrossAxisAlignment.start,
+							children: [
+								Text(
+									name,
+									maxLines: 2,
+									overflow: TextOverflow.ellipsis,
+									style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, height: 1.1),
+								),
+								const SizedBox(height: 6),
+								Row(
+									children: [
+										Text(
+											CartManager.formatPrice(sellingPrice),
+											style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black54),
+										),
+										const Spacer(),
+										Container(
+											padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+											decoration: BoxDecoration(
+												color: const Color(0xFFEFF6FF),
+												borderRadius: BorderRadius.circular(8),
+												border: Border.all(color: const Color(0xFF2979FF).withValues(alpha: 0.2)),
+											),
+											child: Text(
+												'Terjual: $totalSold',
+												style: const TextStyle(fontSize: 11, color: Color(0xFF2979FF), fontWeight: FontWeight.w800),
+											),
+										),
+									],
+								),
+								const SizedBox(height: 4),
+								Row(
+									children: [
+										Icon(Icons.inventory_2_outlined, size: 12, color: getStockColor(qtyAvailable)),
+										const SizedBox(width: 4),
+										Text(
+											'Stok: ${_stockLabel(qtyAvailable)}',
+											style: TextStyle(
+												fontSize: 11,
+												fontWeight: FontWeight.bold,
+												color: getStockColor(qtyAvailable),
+											),
+										),
+									],
+								),
+							],
+						),
+					),
+				],
+			),
+		);
+	}
+
+	List<Widget> _buildBestSellersSlivers() {
+		if (_isLoadingBestSellers && !_isRefreshing) {
+			return const [
+				SliverToBoxAdapter(
+					child: Padding(
+						padding: EdgeInsets.only(top: 60),
+						child: Center(child: CircularProgressIndicator()),
+					),
+				),
+			];
+		}
+
+		final items = _filteredBestSellers;
+
+		if (items.isEmpty) {
+			return const [
+				SliverToBoxAdapter(
+					child: Padding(
+						padding: EdgeInsets.fromLTRB(16, 24, 16, 0),
+						child: Center(
+							child: Text(
+								'Belum ada produk yang terjual.',
+								style: TextStyle(fontSize: 14, color: Colors.black54, fontWeight: FontWeight.w600),
+							),
+						),
+					),
+				),
+			];
+		}
+
+		return [
+			SliverToBoxAdapter(
+				child: Padding(
+					padding: const EdgeInsets.fromLTRB(16, 18, 16, 8),
+					child: Row(
+						children: [
+							const Icon(Icons.star_rounded, color: Color(0xFFF59E0B), size: 22),
+							const SizedBox(width: 8),
+							const Text(
+								'Produk Terlaris',
+								style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+							),
+							const Spacer(),
+							Text(
+								'${items.length} Produk',
+								style: const TextStyle(fontSize: 13, color: Colors.black45, fontWeight: FontWeight.w600),
+							),
+						],
+					),
+				),
+			),
+			SliverPadding(
+				padding: const EdgeInsets.fromLTRB(16, 6, 16, 0),
+				sliver: SliverList(
+					delegate: SliverChildBuilderDelegate(
+						(context, index) => Padding(
+							padding: const EdgeInsets.only(bottom: 12),
+							child: _buildBestSellerCard(index + 1, items[index]),
+						),
+						childCount: items.length,
+					),
+				),
+			),
+		];
+	}
+
 	@override
 	Widget build(BuildContext context) {
-		final bodySlivers = _selectedTab == 'Stock' ? _buildStockSlivers() : _buildHistorySlivers();
+		final bodySlivers = switch (_selectedTab) {
+			'Stock' => _buildStockSlivers(),
+			'Riwayat Penjualan' => _buildHistorySlivers(),
+			'Sering Terjual' => _buildBestSellersSlivers(),
+			_ => _buildStockSlivers(),
+		};
 
 		return Scaffold(
 			extendBody: true,

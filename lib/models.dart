@@ -11,6 +11,7 @@ class Product {
   final double rating;
   final int reviews;
   final String? imageUrl;
+  final int leadTime;
 
   // Compatibility getters for the existing UI code
   double get supplierPrice => price;
@@ -30,6 +31,7 @@ class Product {
     required this.rating,
     this.reviews = 0,
     this.imageUrl,
+    this.leadTime = 3,
   });
 
   factory Product.fromJson(Map<String, dynamic> json) {
@@ -58,6 +60,7 @@ class Product {
       rating: (json['rating'] as num?)?.toDouble() ?? 0.0,
       reviews: (json['reviews'] as num?)?.toInt() ?? 0,
       imageUrl: json['image_url'] as String?,
+      leadTime: (json['lead_time'] as num?)?.toInt() ?? 3,
     );
   }
 }

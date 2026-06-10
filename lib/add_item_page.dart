@@ -24,6 +24,7 @@ class _AddItemPageState extends State<AddItemPage> {
   final TextEditingController _capitalPriceController = TextEditingController(); // Harga Beli
   final TextEditingController _expDateController = TextEditingController();
   final TextEditingController _quantityController = TextEditingController(); // New controller for quantity
+  final TextEditingController _leadTimeController = TextEditingController(text: '3');
   
   int _quantity = 1;
   String? _imageUrl;
@@ -46,6 +47,7 @@ class _AddItemPageState extends State<AddItemPage> {
     _capitalPriceController.dispose();
     _expDateController.dispose();
     _quantityController.dispose();
+    _leadTimeController.dispose();
     super.dispose();
   }
 
@@ -186,7 +188,7 @@ class _AddItemPageState extends State<AddItemPage> {
     final name = _nameController.text.trim();
     final sellingPrice = double.tryParse(_sellingPriceController.text) ?? 0.0;
     final capitalPrice = double.tryParse(_capitalPriceController.text) ?? 0.0;
-  
+    final leadTime = int.tryParse(_leadTimeController.text) ?? 3;
     
     String? expDateIso;
     if (_selectedDate != null) {
@@ -201,6 +203,7 @@ class _AddItemPageState extends State<AddItemPage> {
         'qty_available': _quantity,
         'selling_price': sellingPrice, // Harga Jual
         'capital_price': capitalPrice, // Harga Beli
+        'lead_time': leadTime,
       };
       
       // Only add image_url if image was uploaded
@@ -587,6 +590,25 @@ class _AddItemPageState extends State<AddItemPage> {
                             ),
                           ),
                         ),
+                      ),
+                      const SizedBox(height: 18),
+
+                      _buildLabel('Lead Time (Hari Pengiriman) *'),
+                      TextFormField(
+                        controller: _leadTimeController,
+                        keyboardType: TextInputType.number,
+                        style: const TextStyle(fontSize: 13, color: Colors.black87),
+                        decoration: _inputDecoration(hint: '3 (default)'),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Lead time tidak boleh kosong';
+                          }
+                          final int? val = int.tryParse(value);
+                          if (val == null || val < 0) {
+                            return 'Harus berupa angka positif';
+                          }
+                          return null;
+                        },
                       ),
                       const SizedBox(height: 32),
 

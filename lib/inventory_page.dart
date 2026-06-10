@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -23,6 +24,7 @@ class _InventoryPageState extends State<InventoryPage> {
   late TextEditingController _searchController;
 
   List<Product> _products = [];
+  Map<String, List<int>> _productDailySales = {};
   bool _isLoading = false;
   bool _initialLoad = true;
   Timer? _debounce;
@@ -185,52 +187,90 @@ class _InventoryPageState extends State<InventoryPage> {
   }
 
   // ── Data fetching ──────────────────────────────────────────
-  Future<void> _fetchAllProducts() async {
-    setState(() => _isLoading = true);
-    try {
-      final userId = supabase.auth.currentUser?.id;
-      if (userId == null) return;
+	Future<void> _fetchAllProducts() async {
+		setState(() => _isLoading = true);
+		try {
+			final userId = supabase.auth.currentUser?.id;
+			if (userId == null) return;
 
-      final data = await supabase
-          .from('inventories')
-          .select()
-          .eq('user_id', userId)
-          .order('name');
+			final data = await supabase
+					.from('inventories')
+					.select()
+					.eq('user_id', userId)
+					.order('name');
 
-      if (!mounted) return;
-      final list = data as List;
-      final parsedProducts = list.map((json) {
-        final price = (json['selling_price'] as num?)?.toDouble() ?? 
-                      (json['price'] as num?)?.toDouble() ?? 0.0;
-        final stock = (json['qty_available'] as num?)?.toInt() ?? 
-                      (json['stock'] as num?)?.toInt() ?? 0;
-        return Product(
-          id: json['id']?.toString() ?? '',
-          categoryId: json['category_id']?.toString() ?? '',
-          categoryName: (json['category_name'] ?? '') as String,
-          name: (json['name'] ?? '') as String,
-          brand: (json['brand'] ?? '') as String,
-          price: price,
-          stock: stock,
-          rating: (json['rating'] as num?)?.toDouble() ?? 4.5,
-          imageUrl: json['image_url'] as String?,
-        );
-      }).toList();
+			if (!mounted) return;
+			final list = data as List;
+			final parsedProducts = list.map((json) {
+				final price = (json['selling_price'] as num?)?.toDouble() ?? 
+											(json['price'] as num?)?.toDouble() ?? 0.0;
+				final stock = (json['qty_available'] as num?)?.toInt() ?? 
+											(json['stock'] as num?)?.toInt() ?? 0;
+				return Product(
+					id: json['id']?.toString() ?? '',
+					categoryId: json['category_id']?.toString() ?? '',
+					categoryName: (json['category_name'] ?? '') as String,
+					name: (json['name'] ?? '') as String,
+					brand: (json['brand'] ?? '') as String,
+					price: price,
+					stock: stock,
+					rating: (json['rating'] as num?)?.toDouble() ?? 4.5,
+					imageUrl: json['image_url'] as String?,
+					leadTime: (json['lead_time'] as num?)?.toInt() ?? 3,
+				);
+			}).toList();
 
-      setState(() {
-        _products = parsedProducts;
-        _isLoading = false;
-        _initialLoad = false;
-      });
-    } catch (e) {
-      debugPrint('[SiKulak] Error fetching all products: $e');
-      if (!mounted) return;
-      setState(() {
-        _isLoading = false;
-        _initialLoad = false;
-      });
-    }
-  }
+			// Fetch sales from the last 30 days to calculate daily demand
+			final dateThreshold = DateTime.now().subtract(const Duration(days: 30)).toUtc().toIso8601String();
+			final salesData = await supabase
+					.from('pos_order_items')
+					.select('qty, inventories!inner(id), pos_orders!inner(created_at)')
+					.eq('inventories.user_id', userId)
+					.gte('pos_orders.created_at', dateThreshold);
+
+			final salesList = salesData as List? ?? [];
+			final Map<String, Map<String, int>> dailyMap = {};
+			for (final row in salesList) {
+				final inv = row['inventories'] as Map<String, dynamic>?;
+				if (inv == null) continue;
+				final id = inv['id'].toString();
+
+				final order = row['pos_orders'] as Map<String, dynamic>?;
+				if (order == null || order['created_at'] == null) continue;
+				final dateKey = order['created_at'].toString().substring(0, 10); // YYYY-MM-DD
+
+				final qty = (row['qty'] as num?)?.toInt() ?? 0;
+
+				dailyMap.putIfAbsent(id, () => {});
+				dailyMap[id]![dateKey] = (dailyMap[id]![dateKey] ?? 0) + qty;
+			}
+
+			// Convert dailyMap to 30 days list
+			final Map<String, List<int>> productSalesList = {};
+			for (final p in parsedProducts) {
+				final dailySales = dailyMap[p.id] ?? {};
+				productSalesList[p.id] = List.generate(30, (index) {
+					final date = DateTime.now().subtract(Duration(days: index));
+					final dateKey = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+					return dailySales[dateKey] ?? 0;
+				});
+			}
+
+			setState(() {
+				_products = parsedProducts;
+				_productDailySales = productSalesList;
+				_isLoading = false;
+				_initialLoad = false;
+			});
+		} catch (e) {
+			debugPrint('[SiKulak] Error fetching all products: $e');
+			if (!mounted) return;
+			setState(() {
+				_isLoading = false;
+				_initialLoad = false;
+			});
+		}
+	}
 
   Future<void> _searchProducts(String query) async {
     if (query.trim().isEmpty) {
@@ -267,6 +307,7 @@ class _InventoryPageState extends State<InventoryPage> {
           stock: stock,
           rating: (json['rating'] as num?)?.toDouble() ?? 4.5,
           imageUrl: json['image_url'] as String?,
+          leadTime: (json['lead_time'] as num?)?.toInt() ?? 3,
         );
       }).toList();
 
@@ -288,13 +329,44 @@ class _InventoryPageState extends State<InventoryPage> {
     });
   }
 
+  int _calculateSafetyStock(Product product) {
+    final sales = _productDailySales[product.id] ?? List.filled(30, 0);
+
+    // 1. Calculate daily average
+    final double totalSales = sales.fold(0.0, (sum, val) => sum + val);
+    final double mean = totalSales / 30.0;
+
+    // 2. Calculate daily variance & standard deviation
+    double varianceSum = 0.0;
+    for (final s in sales) {
+      varianceSum += (s - mean) * (s - mean);
+    }
+    final double variance = varianceSum / 30.0;
+    final double stdDevDaily = variance > 0 ? sqrt(variance) : 0.0;
+
+    // Fallback standard deviation jika belum ada penjualan (biar safety stock awal bernilai 3 sachet)
+    double stdDev = stdDevDaily;
+    if (stdDev == 0) {
+      stdDev = 1.05; // 1.65 * 1.05 * sqrt(3) = 1.73 * 1.73 = 3
+    }
+
+    // 3. Safety Stock = Z * stdDev * sqrt(LT)
+    // Z = 1.65 (Service Level 95%)
+    const double zValue = 1.65;
+    final double lt = product.leadTime.toDouble();
+    final double stdDevLeadTime = stdDev * sqrt(lt);
+    final double ss = zValue * stdDevLeadTime;
+
+    return ss.round().clamp(1, 9999);
+  }
+
   // ── Filtered products by stock ─────────────────────────────
   List<Product> get _filteredProducts {
     switch (_stockFilter) {
       case 'Stock Tersedia':
-        return _products.where((p) => p.stock > 10).toList();
+        return _products.where((p) => p.stock > _calculateSafetyStock(p)).toList();
       case 'Stock Sedikit':
-        return _products.where((p) => p.stock > 0 && p.stock <= 10).toList();
+        return _products.where((p) => p.stock > 0 && p.stock <= _calculateSafetyStock(p)).toList();
       case 'Stok Habis':
         return _products.where((p) => p.stock == 0).toList();
       default: // 'Semua'
@@ -303,9 +375,9 @@ class _InventoryPageState extends State<InventoryPage> {
   }
 
   // ── Stock badge color helpers ──────────────────────────────
-  Color _stockBadgeColor(int stock) {
-    if (stock == 0) return const Color(0xFFEF4444);
-    if (stock <= 10) return const Color(0xFFF59E0B);
+  Color _stockBadgeColor(Product product) {
+    if (product.stock == 0) return const Color(0xFFEF4444);
+    if (product.stock <= _calculateSafetyStock(product)) return const Color(0xFFF59E0B);
     return const Color(0xFF22C55E);
   }
 
@@ -672,20 +744,33 @@ class _InventoryPageState extends State<InventoryPage> {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: _stockBadgeColor(product.stock),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    '${product.stock} Sachet',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: _stockBadgeColor(product),
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Text(
+                        '${product.stock} Sachet',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                        ),
+                      ),
                     ),
-                  ),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Safety Stock: ${_calculateSafetyStock(product)} Sachet',
+                      style: TextStyle(
+                        fontSize: 10,
+                        color: Colors.grey[500],
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ),
               ],
             ),

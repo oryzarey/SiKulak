@@ -27,6 +27,7 @@ class _EditItemPageState extends State<EditItemPage> {
   late TextEditingController _capitalPriceController; // Harga Beli
   late TextEditingController _weightController;
   late TextEditingController _expDateController;
+  late TextEditingController _leadTimeController;
   
   int _quantity = 1;
   String? _imageUrl;
@@ -47,6 +48,7 @@ class _EditItemPageState extends State<EditItemPage> {
     _imageUrl = widget.product.imageUrl;
     _weightController = TextEditingController(text: '');
     _expDateController = TextEditingController(text: '');
+    _leadTimeController = TextEditingController(text: widget.product.leadTime.toString());
     
     _loadInventoryDetails();
   }
@@ -58,6 +60,7 @@ class _EditItemPageState extends State<EditItemPage> {
     _capitalPriceController.dispose();
     _weightController.dispose();
     _expDateController.dispose();
+    _leadTimeController.dispose();
     super.dispose();
   }
 
@@ -84,6 +87,7 @@ class _EditItemPageState extends State<EditItemPage> {
               _expDateController.text = _formatDate(parsedDate);
             }
           }
+          _leadTimeController.text = ((response['lead_time'] as num?)?.toInt() ?? widget.product.leadTime).toString();
         });
       }
     } catch (e) {
@@ -307,6 +311,8 @@ class _EditItemPageState extends State<EditItemPage> {
       } catch (_) {}
     }
 
+    final leadTime = int.tryParse(_leadTimeController.text) ?? widget.product.leadTime;
+
     try {
       // Prepare update data
       final Map<String, dynamic> updateData = {
@@ -314,6 +320,7 @@ class _EditItemPageState extends State<EditItemPage> {
         'qty_available': _quantity,
         'selling_price': sellingPrice,
         'capital_price': capitalPrice,
+        'lead_time': leadTime,
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       };
       
@@ -700,6 +707,25 @@ class _EditItemPageState extends State<EditItemPage> {
                             ),
                           ),
                         ),
+                      ),
+                      const SizedBox(height: 18),
+
+                      _buildLabel('Lead Time (Hari Pengiriman) *'),
+                      TextFormField(
+                        controller: _leadTimeController,
+                        keyboardType: TextInputType.number,
+                        style: const TextStyle(fontSize: 13, color: Colors.black87),
+                        decoration: _inputDecoration(hint: '3 (default)'),
+                        validator: (value) {
+                          if (value == null || value.trim().isEmpty) {
+                            return 'Lead time tidak boleh kosong';
+                          }
+                          final int? val = int.tryParse(value);
+                          if (val == null || val < 0) {
+                            return 'Harus berupa angka positif';
+                          }
+                          return null;
+                        },
                       ),
                       const SizedBox(height: 32),
 
