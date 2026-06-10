@@ -1075,51 +1075,57 @@ class _PosPageState extends State<PosPage> {
 									],
 								),
 								const SizedBox(height: 10),
-								Row(
-									children: [
-										Container(
-											padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-											decoration: BoxDecoration(
-												color: _stockColor(item),
-												borderRadius: BorderRadius.circular(8),
+								SizedBox(
+									width: double.infinity,
+									child: Wrap(
+										spacing: 8,
+										runSpacing: 6,
+										alignment: WrapAlignment.spaceBetween,
+										crossAxisAlignment: WrapCrossAlignment.center,
+										children: [
+											Container(
+												padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+												decoration: BoxDecoration(
+													color: _stockColor(item),
+													borderRadius: BorderRadius.circular(8),
+												),
+												child: Text(
+													_stockLabel(item.qtyAvailable),
+													style: const TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.w700),
+												),
 											),
-											child: Text(
-												_stockLabel(item.qtyAvailable),
-												style: const TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.w700),
-											),
-										),
-										const Spacer(),
-										Container(
-											decoration: BoxDecoration(
-												color: const Color(0xFFF8FAFC),
-												borderRadius: BorderRadius.circular(18),
-												border: Border.all(color: const Color(0xFF2979FF).withValues(alpha: 0.6)),
-											),
-											child: Row(
-												mainAxisSize: MainAxisSize.min,
-												children: [
-													_buildStepperButton(
-														icon: Icons.remove,
-														enabled: cartQty > 0,
-														onTap: () => _removeItemFromCart(item.id),
-													),
-													Container(
-														width: 28,
-														alignment: Alignment.center,
-														child: Text(
-															'$cartQty',
-															style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+											Container(
+												decoration: BoxDecoration(
+													color: const Color(0xFFF8FAFC),
+													borderRadius: BorderRadius.circular(18),
+													border: Border.all(color: const Color(0xFF2979FF).withValues(alpha: 0.6)),
+												),
+												child: Row(
+													mainAxisSize: MainAxisSize.min,
+													children: [
+														_buildStepperButton(
+															icon: Icons.remove,
+															enabled: cartQty > 0,
+															onTap: () => _removeItemFromCart(item.id),
 														),
-													),
-													_buildStepperButton(
-														icon: Icons.add,
-														enabled: item.qtyAvailable > cartQty,
-														onTap: () => _addItemToCart(item),
-													),
-												],
+														Container(
+															width: 28,
+															alignment: Alignment.center,
+															child: Text(
+																'$cartQty',
+																style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+															),
+														),
+														_buildStepperButton(
+															icon: Icons.add,
+															enabled: item.qtyAvailable > cartQty,
+															onTap: () => _addItemToCart(item),
+														),
+													],
+												),
 											),
-										),
-									],
+										],
+									),
 								),
 							],
 						),
@@ -1573,26 +1579,32 @@ class _PosPageState extends State<PosPage> {
 									style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, height: 1.1),
 								),
 								const SizedBox(height: 6),
-								Row(
-									children: [
-										Text(
-											CartManager.formatPrice(sellingPrice),
-											style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black54),
-										),
-										const Spacer(),
-										Container(
-											padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-											decoration: BoxDecoration(
-												color: const Color(0xFFEFF6FF),
-												borderRadius: BorderRadius.circular(8),
-												border: Border.all(color: const Color(0xFF2979FF).withValues(alpha: 0.2)),
+								SizedBox(
+									width: double.infinity,
+									child: Wrap(
+										spacing: 8,
+										runSpacing: 4,
+										alignment: WrapAlignment.spaceBetween,
+										crossAxisAlignment: WrapCrossAlignment.center,
+										children: [
+											Text(
+												CartManager.formatPrice(sellingPrice),
+												style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.black54),
 											),
-											child: Text(
-												'Terjual: $totalSold',
-												style: const TextStyle(fontSize: 11, color: Color(0xFF2979FF), fontWeight: FontWeight.w800),
+											Container(
+												padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+												decoration: BoxDecoration(
+													color: const Color(0xFFEFF6FF),
+													borderRadius: BorderRadius.circular(8),
+													border: Border.all(color: const Color(0xFF2979FF).withValues(alpha: 0.2)),
+												),
+												child: Text(
+													'Terjual: $totalSold',
+													style: const TextStyle(fontSize: 11, color: Color(0xFF2979FF), fontWeight: FontWeight.w800),
+												),
 											),
-										),
-									],
+										],
+									),
 								),
 								const SizedBox(height: 4),
 								Row(
@@ -1655,11 +1667,15 @@ class _PosPageState extends State<PosPage> {
 						children: [
 							const Icon(Icons.star_rounded, color: Color(0xFFF59E0B), size: 22),
 							const SizedBox(width: 8),
-							const Text(
-								'Produk Terlaris',
-								style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+							const Expanded(
+								child: Text(
+									'Produk Terlaris',
+									maxLines: 1,
+									overflow: TextOverflow.ellipsis,
+									style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
+								),
 							),
-							const Spacer(),
+							const SizedBox(width: 8),
 							Text(
 								'${items.length} Produk',
 								style: const TextStyle(fontSize: 13, color: Colors.black45, fontWeight: FontWeight.w600),

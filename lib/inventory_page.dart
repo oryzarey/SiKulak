@@ -744,7 +744,8 @@ class _InventoryPageState extends State<InventoryPage> {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 8),
-                Row(
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
@@ -761,7 +762,7 @@ class _InventoryPageState extends State<InventoryPage> {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(height: 6),
                     Text(
                       'Safety Stock: ${_calculateSafetyStock(product)} Sachet',
                       style: TextStyle(

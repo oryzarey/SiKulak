@@ -44,6 +44,8 @@ class _HomePageState extends State<HomePage> {
   int _itemsSoldCount = 0;
   double _totalProfit = 0.0;
   bool _isProfitVisible = true;
+  List<Map<String, dynamic>> _allTransactions = [];
+  String _selectedPeriod = 'Hari';
 
 
 
@@ -323,14 +325,45 @@ class _HomePageState extends State<HomePage> {
       // 2. Fetch transactions & transaction items for items sold and profit
       final transactionsResponse = await supabase
           .from('pos_orders')
-          .select('total_profit, pos_order_items(qty, price_at_sale, profit_at_sale, inventories(capital_price))')
+          .select('total_profit, created_at, pos_order_items(qty, price_at_sale, profit_at_sale, inventories(capital_price))')
           .eq('user_id', userId);
 
-      final txList = transactionsResponse as List;
-      double totalProfit = 0.0;
-      int itemsSold = 0;
+      final txList = (transactionsResponse as List?)?.cast<Map<String, dynamic>>() ?? [];
 
-      for (final tx in txList) {
+      if (mounted) {
+        setState(() {
+          _outOfStockCount = outOfStock;
+          _lowStockCount = lowStock;
+          _allTransactions = txList;
+          _updateInsightsForPeriod();
+        });
+      }
+    } catch (e) {
+      debugPrint('[SiKulak] Error fetching sales insights: $e');
+    }
+  }
+
+  void _updateInsightsForPeriod() {
+    double totalProfit = 0.0;
+    int itemsSold = 0;
+    final now = DateTime.now();
+
+    for (final tx in _allTransactions) {
+      final txCreatedAt = tx['created_at'];
+      if (txCreatedAt == null) continue;
+      final txDate = DateTime.tryParse(txCreatedAt.toString())?.toLocal();
+      if (txDate == null) continue;
+
+      bool match = false;
+      if (_selectedPeriod == 'Hari') {
+        match = txDate.year == now.year && txDate.month == now.month && txDate.day == now.day;
+      } else if (_selectedPeriod == 'Bulan') {
+        match = txDate.year == now.year && txDate.month == now.month;
+      } else if (_selectedPeriod == 'Tahun') {
+        match = txDate.year == now.year;
+      }
+
+      if (match) {
         double txProfit = 0.0;
         final items = tx['pos_order_items'] as List? ?? [];
         for (final item in items) {
@@ -344,18 +377,38 @@ class _HomePageState extends State<HomePage> {
         }
         totalProfit += txProfit;
       }
-
-      if (mounted) {
-        setState(() {
-          _outOfStockCount = outOfStock;
-          _lowStockCount = lowStock;
-          _itemsSoldCount = itemsSold;
-          _totalProfit = totalProfit;
-        });
-      }
-    } catch (e) {
-      debugPrint('[SiKulak] Error fetching sales insights: $e');
     }
+
+    _totalProfit = totalProfit;
+    _itemsSoldCount = itemsSold;
+  }
+
+  Widget _buildPeriodButton(String period) {
+    final isSelected = _selectedPeriod == period;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedPeriod = period;
+          _updateInsightsForPeriod();
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF2979FF) : Colors.transparent,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Text(
+          period,
+          style: TextStyle(
+            color: isSelected ? Colors.white : Colors.grey[600],
+            fontSize: 12,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+      ),
+    );
   }
 
 
@@ -1234,13 +1287,40 @@ class _HomePageState extends State<HomePage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Sales Activity',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF2979FF),
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Sales Activity',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF2979FF),
+                        ),
+                      ),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.05),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        padding: const EdgeInsets.all(2),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _buildPeriodButton('Hari'),
+                            _buildPeriodButton('Bulan'),
+                            _buildPeriodButton('Tahun'),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 16),
                   
@@ -1270,24 +1350,32 @@ class _HomePageState extends State<HomePage> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
-                                'Total Keuntungan',
-                                style: TextStyle(
+                              Text(
+                                _selectedPeriod == 'Hari'
+                                    ? 'Keuntungan Hari Ini'
+                                    : _selectedPeriod == 'Bulan'
+                                        ? 'Keuntungan Bulan Ini'
+                                        : 'Keuntungan Tahun Ini',
+                                style: const TextStyle(
                                   color: Colors.white70,
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
                               const SizedBox(height: 8),
-                              Text(
-                                _isProfitVisible
-                                    ? '${CartManager.formatPrice(_totalProfit)},00'
-                                    : 'Rp. ••••••',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 0.5,
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  _isProfitVisible
+                                      ? '${CartManager.formatPrice(_totalProfit)},00'
+                                      : 'Rp. ••••••',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 0.5,
+                                  ),
                                 ),
                               ),
                             ],
@@ -1503,28 +1591,32 @@ class _HomePageState extends State<HomePage> {
             overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 8),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                value,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  value,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 4),
-              const Text(
-                'Qty',
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w400,
+                const SizedBox(width: 4),
+                const Text(
+                  'Qty',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w400,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
