@@ -142,12 +142,14 @@ class _RegisterPageState extends State<RegisterPage>
           ),
 
           // Konten
-          Column(
-            children: [
+          // Konten
+          CustomScrollView(
+            physics: const ClampingScrollPhysics(),
+            slivers: [
               // Bagian atas biru (header)
-              Expanded(
-                flex: 3,
+              SliverToBoxAdapter(
                 child: SafeArea(
+                  bottom: false,
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -184,8 +186,8 @@ class _RegisterPageState extends State<RegisterPage>
               ),
 
               // Panel putih melengkung (bagian bawah)
-              Expanded(
-                flex: 9,
+              SliverFillRemaining(
+                hasScrollBody: false,
                 child: ClipRRect(
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(36),
@@ -193,212 +195,210 @@ class _RegisterPageState extends State<RegisterPage>
                   ),
                   child: Container(
                     color: Colors.white,
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(28, 32, 28, 24),
-                      child: Form(
-                        key: _formKey,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Judul
-                            const Text(
-                              'Daftar',
-                              style: TextStyle(
-                                fontFamily: 'Poppins',
-                                fontSize: 28,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF2979FF),
-                              ),
+                    padding: const EdgeInsets.fromLTRB(28, 32, 28, 24),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Judul
+                          const Text(
+                            'Daftar',
+                            style: TextStyle(
+                              fontFamily: 'Poppins',
+                              fontSize: 28,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF2979FF),
                             ),
+                          ),
 
-                            const SizedBox(height: 24),
+                          const SizedBox(height: 24),
 
-                            // ── Field Nama ──────────────────────────────
-                            _buildLabel('Nama'),
-                            const SizedBox(height: 8),
-                            _buildTextField(
-                              controller: _namaController,
-                              hint: 'Masukkan nama anda',
-                              prefixIcon: Icons.edit_outlined,
+                          // ── Field Nama ──────────────────────────────
+                          _buildLabel('Nama'),
+                          const SizedBox(height: 8),
+                          _buildTextField(
+                            controller: _namaController,
+                            hint: 'Masukkan nama anda',
+                            prefixIcon: Icons.edit_outlined,
+                          ),
+
+                          const SizedBox(height: 16),
+
+                          // ── Field Email ─────────────────────────────
+                          _buildLabel('Email'),
+                          const SizedBox(height: 8),
+                          _buildTextField(
+                            controller: _emailController,
+                            hint: 'Masukkan email anda',
+                            prefixIcon: Icons.mail_outline_rounded,
+                            keyboardType: TextInputType.emailAddress,
+                          ),
+
+                          const SizedBox(height: 16),
+
+                          // ── Field Kata Sandi ────────────────────────
+                          _buildLabel('Kata Sandi'),
+                          const SizedBox(height: 8),
+                          _buildTextField(
+                            controller: _passwordController,
+                            hint: 'Masukkan kata sandi anda',
+                            prefixIcon: Icons.lock_outline_rounded,
+                            obscure: _obscurePassword,
+                            suffixToggle: () => setState(
+                              () => _obscurePassword = !_obscurePassword,
                             ),
+                            isObscured: _obscurePassword,
+                          ),
 
-                            const SizedBox(height: 16),
+                          const SizedBox(height: 16),
 
-                            // ── Field Email ─────────────────────────────
-                            _buildLabel('Email'),
-                            const SizedBox(height: 8),
-                            _buildTextField(
-                              controller: _emailController,
-                              hint: 'Masukkan email anda',
-                              prefixIcon: Icons.mail_outline_rounded,
-                              keyboardType: TextInputType.emailAddress,
+                          // ── Field Konfirmasi Kata Sandi ─────────────
+                          _buildLabel('Konfirmasi Kata Sandi'),
+                          const SizedBox(height: 8),
+                          _buildTextField(
+                            controller: _konfirmasiController,
+                            hint: 'Masukkan ulang kata sandi anda',
+                            prefixIcon: Icons.lock_outline_rounded,
+                            obscure: _obscureKonfirmasi,
+                            suffixToggle: () => setState(
+                              () =>
+                                  _obscureKonfirmasi = !_obscureKonfirmasi,
                             ),
+                            isObscured: _obscureKonfirmasi,
+                          ),
 
-                            const SizedBox(height: 16),
+                          const SizedBox(height: 32),
 
-                            // ── Field Kata Sandi ────────────────────────
-                            _buildLabel('Kata Sandi'),
-                            const SizedBox(height: 8),
-                            _buildTextField(
-                              controller: _passwordController,
-                              hint: 'Masukkan kata sandi anda',
-                              prefixIcon: Icons.lock_outline_rounded,
-                              obscure: _obscurePassword,
-                              suffixToggle: () => setState(
-                                () => _obscurePassword = !_obscurePassword,
-                              ),
-                              isObscured: _obscurePassword,
-                            ),
-
-                            const SizedBox(height: 16),
-
-                            // ── Field Konfirmasi Kata Sandi ─────────────
-                            _buildLabel('Konfirmasi Kata Sandi'),
-                            const SizedBox(height: 8),
-                            _buildTextField(
-                              controller: _konfirmasiController,
-                              hint: 'Masukkan ulang kata sandi anda',
-                              prefixIcon: Icons.lock_outline_rounded,
-                              obscure: _obscureKonfirmasi,
-                              suffixToggle: () => setState(
-                                () =>
-                                    _obscureKonfirmasi = !_obscureKonfirmasi,
-                              ),
-                              isObscured: _obscureKonfirmasi,
-                            ),
-
-                            const SizedBox(height: 32),
-
-                            // ── Tombol Daftar ───────────────────────────
-                            SizedBox(
-                              width: double.infinity,
-                              height: 54,
-                              child: ElevatedButton(
-                                onPressed: _isLoading ? null : _handleRegister,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF2979FF),
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(30),
-                                  ),
-                                  elevation: 0,
+                          // ── Tombol Daftar ───────────────────────────
+                          SizedBox(
+                            width: double.infinity,
+                            height: 54,
+                            child: ElevatedButton(
+                              onPressed: _isLoading ? null : _handleRegister,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF2979FF),
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(30),
                                 ),
-                                child: _isLoading
-                                    ? const SizedBox(
-                                        width: 22,
-                                        height: 22,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2.5,
-                                          color: Colors.white,
-                                        ),
-                                      )
-                                    : const Text(
-                                        'Daftar',
+                                elevation: 0,
+                              ),
+                              child: _isLoading
+                                  ? const SizedBox(
+                                      width: 22,
+                                      height: 22,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2.5,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Text(
+                                      'Daftar',
+                                      style: TextStyle(
+                                        fontFamily: 'Poppins',
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 16),
+
+                          // ── Sudah punya akun? ───────────────────────
+                          Center(
+                            child: RichText(
+                              text: TextSpan(
+                                style: const TextStyle(
+                                  fontFamily: 'Poppins',
+                                  fontSize: 13,
+                                  color: Colors.black87,
+                                ),
+                                children: [
+                                  const TextSpan(
+                                      text: 'Sudah punya akun? '),
+                                  WidgetSpan(
+                                    child: GestureDetector(
+                                      onTap: () =>
+                                          Navigator.of(context).pop(),
+                                      child: const Text(
+                                        'Masuk',
                                         style: TextStyle(
                                           fontFamily: 'Poppins',
-                                          fontSize: 16,
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xFF2979FF),
+                                          decoration:
+                                              TextDecoration.underline,
+                                          decorationColor:
+                                              Color(0xFF2979FF),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 20),
+
+                          // ── Syarat & Ketentuan ──────────────────────
+                          Center(
+                            child: RichText(
+                              textAlign: TextAlign.center,
+                              text: TextSpan(
+                                style: const TextStyle(
+                                  fontFamily: 'Poppins',
+                                  fontSize: 11,
+                                  color: Colors.black54,
+                                ),
+                                children: [
+                                  const TextSpan(
+                                      text:
+                                          'Dengan mendaftar, kamu menyetujui '),
+                                  WidgetSpan(
+                                    child: GestureDetector(
+                                      onTap: () {
+                                        // TODO: Open Terms
+                                      },
+                                      child: const Text(
+                                        'Syarat &\nKetentuan',
+                                        style: TextStyle(
+                                          fontFamily: 'Poppins',
+                                          fontSize: 11,
+                                          color: Color(0xFF2979FF),
                                           fontWeight: FontWeight.w600,
                                         ),
                                       ),
-                              ),
-                            ),
-
-                            const SizedBox(height: 16),
-
-                            // ── Sudah punya akun? ───────────────────────
-                            Center(
-                              child: RichText(
-                                text: TextSpan(
-                                  style: const TextStyle(
-                                    fontFamily: 'Poppins',
-                                    fontSize: 13,
-                                    color: Colors.black87,
+                                    ),
                                   ),
-                                  children: [
-                                    const TextSpan(
-                                        text: 'Sudah punya akun? '),
-                                    WidgetSpan(
-                                      child: GestureDetector(
-                                        onTap: () =>
-                                            Navigator.of(context).pop(),
-                                        child: const Text(
-                                          'Masuk',
-                                          style: TextStyle(
-                                            fontFamily: 'Poppins',
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w700,
-                                            color: Color(0xFF2979FF),
-                                            decoration:
-                                                TextDecoration.underline,
-                                            decorationColor:
-                                                Color(0xFF2979FF),
-                                          ),
+                                  const TextSpan(text: ' dan '),
+                                  WidgetSpan(
+                                    child: GestureDetector(
+                                      onTap: () {
+                                        // TODO: Open Privacy
+                                      },
+                                      child: const Text(
+                                        'Kebijakan Privasi',
+                                        style: TextStyle(
+                                          fontFamily: 'Poppins',
+                                          fontSize: 11,
+                                          color: Color(0xFF2979FF),
+                                          fontWeight: FontWeight.w600,
                                         ),
                                       ),
                                     ),
-                                  ],
-                                ),
-                              ),
-                            ),
-
-                            const SizedBox(height: 20),
-
-                            // ── Syarat & Ketentuan ──────────────────────
-                            Center(
-                              child: RichText(
-                                textAlign: TextAlign.center,
-                                text: TextSpan(
-                                  style: const TextStyle(
-                                    fontFamily: 'Poppins',
-                                    fontSize: 11,
-                                    color: Colors.black54,
                                   ),
-                                  children: [
-                                    const TextSpan(
-                                        text:
-                                            'Dengan mendaftar, kamu menyetujui '),
-                                    WidgetSpan(
-                                      child: GestureDetector(
-                                        onTap: () {
-                                          // TODO: Open Terms
-                                        },
-                                        child: const Text(
-                                          'Syarat &\nKetentuan',
-                                          style: TextStyle(
-                                            fontFamily: 'Poppins',
-                                            fontSize: 11,
-                                            color: Color(0xFF2979FF),
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    const TextSpan(text: ' dan '),
-                                    WidgetSpan(
-                                      child: GestureDetector(
-                                        onTap: () {
-                                          // TODO: Open Privacy
-                                        },
-                                        child: const Text(
-                                          'Kebijakan Privasi',
-                                          style: TextStyle(
-                                            fontFamily: 'Poppins',
-                                            fontSize: 11,
-                                            color: Color(0xFF2979FF),
-                                            fontWeight: FontWeight.w600,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                    const TextSpan(text: ' kami.'),
-                                  ],
-                                ),
+                                  const TextSpan(text: ' kami.'),
+                                ],
                               ),
                             ),
+                          ),
 
-                            const SizedBox(height: 16),
-                          ],
-                        ),
+                          const SizedBox(height: 16),
+                        ],
                       ),
                     ),
                   ),

@@ -89,12 +89,13 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
         children: [
           Image.asset('assets/images/background.png', fit: BoxFit.cover),
           Container(color: const Color(0xFF2979FF).withValues(alpha: 0.90)),
-          Column(
-            children: [
+          CustomScrollView(
+            physics: const ClampingScrollPhysics(),
+            slivers: [
               // Header
-              Expanded(
-                flex: 3,
+              SliverToBoxAdapter(
                 child: SafeArea(
+                  bottom: false,
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -120,8 +121,8 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                 ),
               ),
               // White panel
-              Expanded(
-                flex: 9,
+              SliverFillRemaining(
+                hasScrollBody: false,
                 child: ClipRRect(
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(36),
@@ -130,10 +131,8 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
                   child: Container(
                     color: Colors.white,
                     width: double.infinity,
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(28, 32, 28, 24),
-                      child: _isSuccess ? _buildSuccessState() : _buildFormState(),
-                    ),
+                    padding: const EdgeInsets.fromLTRB(28, 32, 28, 24),
+                    child: _isSuccess ? _buildSuccessState() : _buildFormState(),
                   ),
                 ),
               ),

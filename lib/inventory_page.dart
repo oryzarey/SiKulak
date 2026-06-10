@@ -30,8 +30,6 @@ class _InventoryPageState extends State<InventoryPage> {
   Timer? _debounce;
   String _userName = 'User';
 
-  // 0 = Stock
-  int _selectedTab = 0;
   StreamSubscription<AuthState>? _authStateSubscription;
 
   // Stock sub-filter
@@ -193,6 +191,46 @@ class _InventoryPageState extends State<InventoryPage> {
 			final userId = supabase.auth.currentUser?.id;
 			if (userId == null) return;
 
+			// Fetch global products for fallbacks
+			final globalProductsData = await supabase.from('products').select();
+			final Map<String, String> nameToImage = {};
+			final Map<String, String> nameToBrand = {};
+			final Map<String, String> nameToCategoryName = {};
+			final Map<String, String> nameToCategoryId = {};
+			final Map<String, double> nameToRating = {};
+			final Map<String, int> nameToLeadTime = {};
+
+			for (final p in globalProductsData as List) {
+				final name = (p['name'] ?? '') as String;
+				final imageUrl = p['image_url'] as String?;
+				final brand = p['brand'] as String? ?? '';
+				final rating = (p['rating'] as num?)?.toDouble() ?? 4.5;
+				final leadTime = (p['lead_time'] as num?)?.toInt() ?? 3;
+				final categoryId = p['category_id']?.toString() ?? '';
+
+				String catName = '';
+				final catObj = p['category'] ?? p['categories'];
+				if (catObj is String) {
+					catName = catObj;
+				} else if (catObj is Map) {
+					catName = (catObj['name'] ?? catObj['nama'] ?? '').toString();
+				} else if (catObj is List && catObj.isNotEmpty) {
+					final first = catObj.first;
+					if (first is Map) {
+						catName = (first['name'] ?? first['nama'] ?? '').toString();
+					}
+				}
+
+				if (name.isNotEmpty) {
+					if (imageUrl != null && imageUrl.isNotEmpty) nameToImage[name] = imageUrl;
+					if (brand.isNotEmpty) nameToBrand[name] = brand;
+					if (catName.isNotEmpty) nameToCategoryName[name] = catName;
+					if (categoryId.isNotEmpty) nameToCategoryId[name] = categoryId;
+					nameToRating[name] = rating;
+					nameToLeadTime[name] = leadTime;
+				}
+			}
+
 			final data = await supabase
 					.from('inventories')
 					.select()
@@ -202,21 +240,30 @@ class _InventoryPageState extends State<InventoryPage> {
 			if (!mounted) return;
 			final list = data as List;
 			final parsedProducts = list.map((json) {
+				final name = (json['name'] ?? '') as String;
 				final price = (json['selling_price'] as num?)?.toDouble() ?? 
 											(json['price'] as num?)?.toDouble() ?? 0.0;
 				final stock = (json['qty_available'] as num?)?.toInt() ?? 
 											(json['stock'] as num?)?.toInt() ?? 0;
 				return Product(
 					id: json['id']?.toString() ?? '',
-					categoryId: json['category_id']?.toString() ?? '',
-					categoryName: (json['category_name'] ?? '') as String,
-					name: (json['name'] ?? '') as String,
-					brand: (json['brand'] ?? '') as String,
+					categoryId: (json['category_id']?.toString() ?? '').isNotEmpty 
+											? json['category_id'].toString() 
+											: (nameToCategoryId[name] ?? ''),
+					categoryName: (json['category_name']?.toString() ?? '').isNotEmpty
+											? json['category_name'].toString()
+											: (nameToCategoryName[name] ?? ''),
+					name: name,
+					brand: (json['brand']?.toString() ?? '').isNotEmpty
+											? json['brand'].toString()
+											: (nameToBrand[name] ?? ''),
 					price: price,
 					stock: stock,
-					rating: (json['rating'] as num?)?.toDouble() ?? 4.5,
-					imageUrl: json['image_url'] as String?,
-					leadTime: (json['lead_time'] as num?)?.toInt() ?? 3,
+					rating: (json['rating'] as num?)?.toDouble() ?? (nameToRating[name] ?? 4.5),
+					imageUrl: (json['image_url']?.toString() ?? '').isNotEmpty
+											? json['image_url'].toString()
+											: nameToImage[name],
+					leadTime: (json['lead_time'] as num?)?.toInt() ?? (nameToLeadTime[name] ?? 3),
 				);
 			}).toList();
 
@@ -283,6 +330,46 @@ class _InventoryPageState extends State<InventoryPage> {
       final userId = supabase.auth.currentUser?.id;
       if (userId == null) return;
 
+      // Fetch global products for fallbacks
+      final globalProductsData = await supabase.from('products').select();
+      final Map<String, String> nameToImage = {};
+      final Map<String, String> nameToBrand = {};
+      final Map<String, String> nameToCategoryName = {};
+      final Map<String, String> nameToCategoryId = {};
+      final Map<String, double> nameToRating = {};
+      final Map<String, int> nameToLeadTime = {};
+
+      for (final p in globalProductsData as List) {
+        final name = (p['name'] ?? '') as String;
+        final imageUrl = p['image_url'] as String?;
+        final brand = p['brand'] as String? ?? '';
+        final rating = (p['rating'] as num?)?.toDouble() ?? 4.5;
+        final leadTime = (p['lead_time'] as num?)?.toInt() ?? 3;
+        final categoryId = p['category_id']?.toString() ?? '';
+
+        String catName = '';
+        final catObj = p['category'] ?? p['categories'];
+        if (catObj is String) {
+          catName = catObj;
+        } else if (catObj is Map) {
+          catName = (catObj['name'] ?? catObj['nama'] ?? '').toString();
+        } else if (catObj is List && catObj.isNotEmpty) {
+          final first = catObj.first;
+          if (first is Map) {
+            catName = (first['name'] ?? first['nama'] ?? '').toString();
+          }
+        }
+
+        if (name.isNotEmpty) {
+          if (imageUrl != null && imageUrl.isNotEmpty) nameToImage[name] = imageUrl;
+          if (brand.isNotEmpty) nameToBrand[name] = brand;
+          if (catName.isNotEmpty) nameToCategoryName[name] = catName;
+          if (categoryId.isNotEmpty) nameToCategoryId[name] = categoryId;
+          nameToRating[name] = rating;
+          nameToLeadTime[name] = leadTime;
+        }
+      }
+
       final data = await supabase
           .from('inventories')
           .select()
@@ -293,21 +380,30 @@ class _InventoryPageState extends State<InventoryPage> {
       if (!mounted) return;
       final list = data as List;
       final parsedProducts = list.map((json) {
+        final name = (json['name'] ?? '') as String;
         final price = (json['selling_price'] as num?)?.toDouble() ?? 
                       (json['price'] as num?)?.toDouble() ?? 0.0;
         final stock = (json['qty_available'] as num?)?.toInt() ?? 
                       (json['stock'] as num?)?.toInt() ?? 0;
         return Product(
           id: json['id']?.toString() ?? '',
-          categoryId: json['category_id']?.toString() ?? '',
-          categoryName: (json['category_name'] ?? '') as String,
-          name: (json['name'] ?? '') as String,
-          brand: (json['brand'] ?? '') as String,
+          categoryId: (json['category_id']?.toString() ?? '').isNotEmpty 
+                      ? json['category_id'].toString() 
+                      : (nameToCategoryId[name] ?? ''),
+          categoryName: (json['category_name']?.toString() ?? '').isNotEmpty
+                      ? json['category_name'].toString()
+                      : (nameToCategoryName[name] ?? ''),
+          name: name,
+          brand: (json['brand']?.toString() ?? '').isNotEmpty
+                      ? json['brand'].toString()
+                      : (nameToBrand[name] ?? ''),
           price: price,
           stock: stock,
-          rating: (json['rating'] as num?)?.toDouble() ?? 4.5,
-          imageUrl: json['image_url'] as String?,
-          leadTime: (json['lead_time'] as num?)?.toInt() ?? 3,
+          rating: (json['rating'] as num?)?.toDouble() ?? (nameToRating[name] ?? 4.5),
+          imageUrl: (json['image_url']?.toString() ?? '').isNotEmpty
+                      ? json['image_url'].toString()
+                      : nameToImage[name],
+          leadTime: (json['lead_time'] as num?)?.toInt() ?? (nameToLeadTime[name] ?? 3),
         );
       }).toList();
 

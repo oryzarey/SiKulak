@@ -33,12 +33,13 @@ class WelcomePage extends StatelessWidget {
           ),
 
           // 3. Semua konten
-          Column(
-            children: [
+          CustomScrollView(
+            physics: const ClampingScrollPhysics(),
+            slivers: [
               // Bagian atas: teks + logo
-              Expanded(
-                flex: 3,
+              SliverToBoxAdapter(
                 child: SafeArea(
+                  bottom: false,
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -55,8 +56,8 @@ class WelcomePage extends StatelessWidget {
               ),
 
               //Bagian bawah: panel putih dengan gradient
-              Expanded(
-                flex: 5,
+              SliverFillRemaining(
+                hasScrollBody: false,
                 child: ClipRRect(
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(36),
@@ -161,8 +162,6 @@ class WelcomePage extends StatelessWidget {
                             ),
                           ),
                         ),
-                        const SizedBox(height: 50),
-                        // Bottom padding untuk jarak dari tepi bawah
                         const SizedBox(height: 50),
                       ],
                     ),

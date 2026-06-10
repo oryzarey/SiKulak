@@ -24,7 +24,6 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   // ── State ──────────────────────────────────────────────────
-  final CartManager _cart = CartManager();
   final Set<String> _wishlistItems = {}; // local-only (no BE table)
   String? _selectedCategoryId; // null = "Semua Produk"
   int _selectedNavItem = 0;
@@ -154,6 +153,20 @@ class _HomePageState extends State<HomePage> {
         // Insert each product into inventories
         for (final p in list) {
           final price = (p['price'] as num?)?.toDouble() ?? 10000.0;
+          
+          String catName = '';
+          final catObj = p['category'] ?? p['categories'];
+          if (catObj is String) {
+            catName = catObj;
+          } else if (catObj is Map) {
+            catName = (catObj['name'] ?? catObj['nama'] ?? '').toString();
+          } else if (catObj is List && catObj.isNotEmpty) {
+            final first = catObj.first;
+            if (first is Map) {
+              catName = (first['name'] ?? first['nama'] ?? '').toString();
+            }
+          }
+
           await supabase.from('inventories').insert({
             'user_id': userId,
             'name': p['name'],
@@ -161,12 +174,69 @@ class _HomePageState extends State<HomePage> {
             'capital_price': price * 0.90,
             'selling_price': price,
             'exp_date': null,
+            'image_url': p['image_url'],
+            'brand': p['brand'],
+            'rating': p['rating'],
+            'lead_time': p['lead_time'],
+            'category_id': p['category_id'],
+            'category_name': catName.isNotEmpty ? catName : (p['category_name'] ?? ''),
           });
         }
         debugPrint('[SiKulak] Inventory initialization complete.');
+      } else {
+        // Heal existing inventories if image_url or category_name is null
+        final unhealed = await supabase
+            .from('inventories')
+            .select('id, name, image_url')
+            .eq('user_id', userId);
+        
+        final listUnhealed = unhealed as List;
+        final needsHealing = listUnhealed.any((item) => item['image_url'] == null);
+        if (needsHealing) {
+          debugPrint('[SiKulak] Found inventories with null image_url. Healing from products catalog...');
+          final globalProducts = await supabase.from('products').select();
+          final Map<String, Map<String, dynamic>> prodMap = {};
+          for (final p in globalProducts as List) {
+            final name = (p['name'] ?? '') as String;
+            if (name.isNotEmpty) {
+              prodMap[name] = p;
+            }
+          }
+          
+          for (final item in listUnhealed) {
+            if (item['image_url'] == null) {
+              final name = (item['name'] ?? '') as String;
+              final p = prodMap[name];
+              if (p != null) {
+                String catName = '';
+                final catObj = p['category'] ?? p['categories'];
+                if (catObj is String) {
+                  catName = catObj;
+                } else if (catObj is Map) {
+                  catName = (catObj['name'] ?? catObj['nama'] ?? '').toString();
+                } else if (catObj is List && catObj.isNotEmpty) {
+                  final first = catObj.first;
+                  if (first is Map) {
+                    catName = (first['name'] ?? first['nama'] ?? '').toString();
+                  }
+                }
+                
+                await supabase.from('inventories').update({
+                  'image_url': p['image_url'],
+                  'brand': p['brand'],
+                  'rating': p['rating'],
+                  'lead_time': p['lead_time'],
+                  'category_id': p['category_id'],
+                  'category_name': catName.isNotEmpty ? catName : (p['category_name'] ?? ''),
+                }).eq('id', item['id']);
+              }
+            }
+          }
+          debugPrint('[SiKulak] Inventory healing complete.');
+        }
       }
     } catch (e) {
-      debugPrint('[SiKulak] Error initializing inventory: $e');
+      debugPrint('[SiKulak] Error initializing/healing inventory: $e');
     }
   }
 
@@ -538,112 +608,7 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  // ── Checkout Cart ──────────────────────────────────────────
-  Future<void> _checkoutCart(BuildContext context) async {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator()),
-    );
 
-    try {
-      final user = supabase.auth.currentUser;
-      if (user == null) throw Exception('User tidak terautentikasi.');
-      final userId = user.id;
-      final totalPrice = _cart.totalPrice;
-      double totalProfit = 0.0;
-      for (final entry in _cart.items.entries) {
-        final item = entry.value;
-        totalProfit += (item.price - item.capitalPrice) * item.quantity;
-      }
-
-      // 1. Create transaction in DB
-      final transactionResponse = await supabase.from('transactions').insert({
-        'user_id': userId,
-        'total_price': totalPrice,
-        'total_profit': totalProfit,
-        'status': 'completed',
-      }).select().single();
-
-      final transactionId = transactionResponse['id'];
-
-      // 2. Insert transaction items and update stock for each item
-      for (final entry in _cart.items.entries) {
-        final productIdStr = entry.key;
-        final cartItem = entry.value;
-        final productId = productIdStr;
-
-        // Insert item details
-        await supabase.from('transaction_items').insert({
-          'transaction_id': transactionId,
-          'product_id': productId,
-          'quantity': cartItem.quantity,
-          'price_at_purchase': cartItem.price,
-          'profit_at_purchase': cartItem.price - cartItem.capitalPrice,
-        });
-
-        // Fetch current stock to subtract from user's inventories
-        final invData = await supabase
-            .from('inventories')
-            .select('id, qty_available')
-            .eq('user_id', userId)
-            .or('id.eq.$productId,name.eq.${cartItem.productName}')
-            .maybeSingle();
-        if (invData != null) {
-          final invId = invData['id'];
-          final currentQty = (invData['qty_available'] as num?)?.toInt() ?? 0;
-          final newQty = (currentQty - cartItem.quantity).clamp(0, 999999);
-          await supabase
-              .from('inventories')
-              .update({
-                'qty_available': newQty,
-                'updated_at': DateTime.now().toUtc().toIso8601String(),
-              })
-              .eq('id', invId);
-        }
-      }
-
-      // 3. Clear cart and reload
-      _cart.clear();
-      _loadData();
-
-      if (!context.mounted) return;
-      Navigator.pop(context); // Dismiss spinner
-      Navigator.pop(context); // Dismiss cart modal
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Pembayaran berhasil! Transaksi disimpan ke database.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: Colors.white)),
-          backgroundColor: Colors.green.shade900.withValues(alpha: 0.8),
-          elevation: 0,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(30)),
-          margin: const EdgeInsets.only(bottom: 95, left: 40, right: 40),
-          duration: const Duration(seconds: 3),
-        ),
-      );
-    } catch (e) {
-      if (!context.mounted) return;
-      Navigator.pop(context); // Dismiss spinner
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Gagal melakukan checkout: $e',
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 12, color: Colors.white)),
-          backgroundColor: Colors.red.shade900.withValues(alpha: 0.8),
-          elevation: 0,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(30)),
-          margin: const EdgeInsets.only(bottom: 95, left: 40, right: 40),
-          duration: const Duration(seconds: 3),
-        ),
-      );
-    }
-  }
 
   // ── Low Stock Dialog ───────────────────────────────────────
   void _showLowStockDialog(List<InventoryItem> items) {
@@ -804,196 +769,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // ── Cart Modal ─────────────────────────────────────────────
-  void _showCartModal(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(20),
-          topRight: Radius.circular(20),
-        ),
-      ),
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: 0.6,
-          minChildSize: 0.4,
-          maxChildSize: 0.9,
-          builder: (context, scrollController) {
-            final entries = _cart.items.entries.toList();
-            return Container(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Keranjang Belanja',
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.bold)),
-                      GestureDetector(
-                          onTap: () => Navigator.pop(context),
-                          child: const Icon(Icons.close)),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  if (_cart.isEmpty)
-                    const Center(
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(vertical: 40),
-                        child: Text('Keranjang kosong',
-                            style: TextStyle(color: Colors.grey)),
-                      ),
-                    )
-                  else
-                    Expanded(
-                      child: ListView.builder(
-                        controller: scrollController,
-                        itemCount: entries.length,
-                        itemBuilder: (context, index) {
-                          final productId = entries[index].key;
-                          final entry = entries[index].value;
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 60,
-                                  height: 60,
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey[200],
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  clipBehavior: Clip.antiAlias,
-                                  child: entry.imageUrl != null &&
-                                          entry.imageUrl!.isNotEmpty
-                                      ? Image.network(entry.imageUrl!,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (_, __, ___) =>
-                                              Icon(Icons.image,
-                                                  color: Colors.grey[300]))
-                                      : Icon(Icons.image,
-                                          color: Colors.grey[300]),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(entry.productName,
-                                          style: const TextStyle(
-                                              fontWeight: FontWeight.bold)),
-                                      Text(
-                                          CartManager.formatPrice(entry.price),
-                                          style: const TextStyle(
-                                              color: Colors.grey)),
-                                    ],
-                                  ),
-                                ),
-                                Container(
-                                  decoration: BoxDecoration(
-                                    border: Border.all(color: Colors.blue),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      IconButton(
-                                        onPressed: () {
-                                          _cart.remove(productId);
-                                          setModalState(() {});
-                                          setState(() {});
-                                        },
-                                        icon: const Icon(
-                                            Icons.remove_circle_outline,
-                                            size: 18,
-                                            color: Colors.blue),
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(),
-                                      ),
-                                      Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 8),
-                                        child: Text(
-                                            entry.quantity.toString(),
-                                            style: const TextStyle(
-                                                fontWeight: FontWeight.bold)),
-                                      ),
-                                      IconButton(
-                                        onPressed: () {
-                                           _cart.add(productId,
-                                              name: entry.productName,
-                                              price: entry.price,
-                                              capitalPrice: entry.capitalPrice,
-                                              imageUrl: entry.imageUrl);
-                                          setModalState(() {});
-                                          setState(() {});
-                                        },
-                                        icon: const Icon(
-                                            Icons.add_circle_outline,
-                                            size: 18,
-                                            color: Colors.blue),
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  const SizedBox(height: 16),
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Colors.blue[400]!, Colors.blue[600]!],
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 16),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Total: ${_cart.totalItems} items',
-                                style: const TextStyle(
-                                    color: Colors.white, fontSize: 12)),
-                            Text(_cart.formattedTotalPrice,
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16)),
-                          ],
-                        ),
-                        ElevatedButton.icon(
-                          onPressed: () => _checkoutCart(context),
-                          icon: const Icon(Icons.payment),
-                          label: const Text('Lanjut'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: Colors.blue,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
+
 
   void _handleTabSelection(int index) {
     if (index == _selectedNavItem) return;
