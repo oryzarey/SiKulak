@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -313,7 +314,7 @@ class _PosPageState extends State<PosPage> {
 				.select('*')
 				.eq('user_id', userId)
 				.order('created_at', ascending: false)
-				.limit(50);
+				.limit(150);
 
 			debugPrint('[SiKulak] Raw data: $data');
 			debugPrint('[SiKulak] Fetched ${(data as List).length} orders');
@@ -326,10 +327,22 @@ class _PosPageState extends State<PosPage> {
 				try {
 					final items = await supabase
 						.from('pos_order_items')
-						.select('*, inventories(id, name, image_url)')
+						.select('*, inventories(id, name, image_url, capital_price)')
 						.eq('order_id', orderId);
 					
 					order['pos_order_items'] = items;
+
+					// Calculate actual profit on the fly for backwards compatibility with old records
+					double calculatedProfit = 0.0;
+					for (final it in items) {
+						final qty = (it['qty'] as num?)?.toInt() ?? 0;
+						final price = (it['price_at_sale'] as num?)?.toDouble() ?? 0.0;
+						final capital = (it['inventories']?['capital_price'] as num?)?.toDouble() ?? 
+										(it['profit_at_sale'] != null ? (price - (it['profit_at_sale'] as num).toDouble()) : (price * 0.90));
+						calculatedProfit += (price - capital) * qty;
+					}
+					order['total_profit'] = calculatedProfit;
+
 					debugPrint('[SiKulak] Order $orderId has ${(items as List).length} items');
 				} catch (itemsError) {
 					debugPrint('[SiKulak] Error fetching items for order $orderId: $itemsError');
@@ -489,6 +502,7 @@ class _PosPageState extends State<PosPage> {
 				item.id,
 				name: item.name,
 				price: item.sellingPrice,
+				capitalPrice: item.capitalPrice,
 				imageUrl: item.imageUrl,
 			);
 		});
@@ -592,10 +606,24 @@ class _PosPageState extends State<PosPage> {
 		);
 	}
 
-	Color _stockColor(int qty) {
-		if (qty == 0) return const Color(0xFFDC2626); // Merah - Habis
-		if (qty <= 10) return const Color(0xFFEAB308); // Kuning - Stok Rendah
-		return const Color(0xFF16A34A); // Hijau - Tersedia
+	/// Simplified safety stock for POS: Z=1.65, uses total sales from _salesCountMap
+	/// as avg daily demand proxy. Similar to inventory page but simplified.
+	int _posSafetyStock(InventoryItem item) {
+		// We use total sold as a proxy for demand. Spread over 30 days.
+		final totalSold = (_salesCountMap[item.id] ?? 0).toDouble();
+		final dailyAvg = totalSold / 30.0;
+		// stdDev fallback: if no sales, use 1.05 (gives ~3 units at LT=3)
+		final stdDev = dailyAvg > 0 ? (dailyAvg * 0.5) : 1.05;
+		const double zValue = 1.65;
+		final lt = item.leadTime.toDouble();
+		final ss = zValue * stdDev * sqrt(lt > 0 ? lt : 1);
+		return ss.round().clamp(1, 9999);
+	}
+
+	Color _stockColor(InventoryItem item) {
+		if (item.qtyAvailable == 0) return const Color(0xFFDC2626); // Merah - Habis
+		if (item.qtyAvailable <= _posSafetyStock(item)) return const Color(0xFFEAB308); // Kuning - Di bawah Safety Stock
+		return const Color(0xFF16A34A); // Hijau - Aman
 	}
 
 	String _stockLabel(int qty) {
@@ -977,7 +1005,9 @@ class _PosPageState extends State<PosPage> {
 					const SizedBox(height: 8),
 					Text(
 						value,
-						style: TextStyle(fontSize: 18, color: color, fontWeight: FontWeight.w800),
+						style: TextStyle(fontSize: 15, color: color, fontWeight: FontWeight.w800),
+						maxLines: 1,
+						overflow: TextOverflow.ellipsis,
 					),
 				],
 			),
@@ -1050,7 +1080,7 @@ class _PosPageState extends State<PosPage> {
 										Container(
 											padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
 											decoration: BoxDecoration(
-												color: _stockColor(item.qtyAvailable),
+												color: _stockColor(item),
 												borderRadius: BorderRadius.circular(8),
 											),
 											child: Text(
@@ -1130,11 +1160,104 @@ class _PosPageState extends State<PosPage> {
 			];
 		}
 
-		final totalProfit = _transactions.fold<double>(
+		final now = DateTime.now();
+		final filteredTransactions = _transactions.where((tx) {
+			final createdAt = tx['created_at']?.toString();
+			if (createdAt == null) return false;
+			final dt = DateTime.tryParse(createdAt)?.toLocal();
+			if (dt == null) return false;
+
+			switch (_salesTimeframe) {
+				case 'Harian':
+					return dt.year == now.year && dt.month == now.month && dt.day == now.day;
+				case 'Mingguan':
+					final difference = now.difference(dt).inDays;
+					return difference >= 0 && difference < 7;
+				case 'Bulanan':
+					return dt.year == now.year && dt.month == now.month;
+				case 'Tahunan':
+					return dt.year == now.year;
+				default:
+					return true;
+			}
+		}).toList();
+
+		if (filteredTransactions.isEmpty) {
+			return [
+				SliverToBoxAdapter(
+					child: Padding(
+						padding: const EdgeInsets.fromLTRB(16, 18, 16, 2),
+						child: Row(
+							children: [
+								Expanded(child: _buildStatCard('Penjualan', CartManager.formatPrice(0.0), const Color(0xFF2979FF))),
+								const SizedBox(width: 8),
+								Expanded(child: _buildStatCard('Profit', CartManager.formatPrice(0.0), const Color(0xFF16A34A))),
+								const SizedBox(width: 8),
+								Expanded(child: _buildStatCard('Terjual', '0', const Color(0xFFF59E0B))),
+							],
+						),
+					),
+				),
+				SliverToBoxAdapter(
+					child: Padding(
+						padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
+						child: Row(
+							spacing: 10,
+							mainAxisAlignment: MainAxisAlignment.spaceBetween,
+							children: _salesTimeframes.map((timeframe) {
+								final selected = _salesTimeframe == timeframe;
+								return Expanded(
+									child: GestureDetector(
+										onTap: () => setState(() => _salesTimeframe = timeframe),
+										child: Container(
+											padding: const EdgeInsets.symmetric(vertical: 6),
+											margin: const EdgeInsets.symmetric(horizontal: 2),
+											decoration: BoxDecoration(
+												color: selected ? const Color(0xFF2979FF) : Colors.white,
+												borderRadius: BorderRadius.circular(999),
+												border: Border.all(color: const Color(0xFF2979FF), width: 1),
+											),
+											child: Text(
+												timeframe,
+												textAlign: TextAlign.center,
+												style: TextStyle(
+													fontSize: 11,
+													fontWeight: FontWeight.w700,
+													color: selected ? Colors.white : const Color(0xFF2979FF),
+												),
+											),
+										),
+									),
+								);
+							}).toList(),
+						),
+					),
+				),
+				SliverToBoxAdapter(
+					child: Padding(
+						padding: const EdgeInsets.fromLTRB(16, 24, 16, 0),
+						child: Center(
+							child: Text(
+								_transactions.isEmpty
+										? 'Belum ada riwayat penjualan.'
+										: 'Tidak ada penjualan untuk periode ini.',
+								style: const TextStyle(fontSize: 14, color: Colors.black54, fontWeight: FontWeight.w600),
+							),
+						),
+					),
+				),
+			];
+		}
+
+		final totalSales = filteredTransactions.fold<double>(
+			0,
+			(sum, tx) => sum + ((tx['total_gross'] as num?)?.toDouble() ?? 0.0),
+		);
+		final totalProfit = filteredTransactions.fold<double>(
 			0,
 			(sum, tx) => sum + ((tx['total_profit'] as num?)?.toDouble() ?? 0.0),
 		);
-		final itemsSold = _transactions.fold<int>(
+		final itemsSold = filteredTransactions.fold<int>(
 			0,
 			(sum, tx) {
 				final items = tx['pos_order_items'] as List? ?? const [];
@@ -1144,26 +1267,10 @@ class _PosPageState extends State<PosPage> {
 			},
 		);
 
-		if (_transactions.isEmpty) {
-			return const [
-				SliverToBoxAdapter(
-					child: Padding(
-						padding: EdgeInsets.fromLTRB(16, 24, 16, 0),
-						child: Center(
-							child: Text(
-								'Belum ada riwayat penjualan.',
-								style: TextStyle(fontSize: 14, color: Colors.black54, fontWeight: FontWeight.w600),
-							),
-						),
-					),
-				),
-			];
-		}
-
 		final groupedTransactions = <String, List<Map<String, dynamic>>>{};
 		final groupedLabels = <String, String>{};
 
-		for (final tx in _transactions) {
+		for (final tx in filteredTransactions) {
 			final createdAt = tx['created_at']?.toString();
 			final createdDate = createdAt == null ? null : DateTime.tryParse(createdAt)?.toLocal();
 			final key = createdDate == null ? 'unknown' : _historyGroupKey(createdDate);
@@ -1190,9 +1297,11 @@ class _PosPageState extends State<PosPage> {
 					padding: const EdgeInsets.fromLTRB(16, 18, 16, 2),
 					child: Row(
 						children: [
+							Expanded(child: _buildStatCard('Penjualan', CartManager.formatPrice(totalSales), const Color(0xFF2979FF))),
+							const SizedBox(width: 8),
 							Expanded(child: _buildStatCard('Profit', CartManager.formatPrice(totalProfit), const Color(0xFF16A34A))),
-							const SizedBox(width: 10),
-							Expanded(child: _buildStatCard('Terjual', '$itemsSold', const Color(0xFF2979FF))),
+							const SizedBox(width: 8),
+							Expanded(child: _buildStatCard('Terjual', '$itemsSold', const Color(0xFFF59E0B))),
 						],
 					),
 				),

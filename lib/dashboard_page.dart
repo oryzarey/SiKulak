@@ -151,7 +151,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
       final txsResponse = await supabase
           .from('pos_orders')
-          .select('total_profit, created_at, pos_order_items(qty, created_at)')
+          .select('total_profit, created_at, pos_order_items(qty, price_at_sale, profit_at_sale, created_at, inventories(capital_price))')
           .eq('user_id', userId);
 
       _rawProducts = productsResponse as List;
@@ -230,8 +230,22 @@ class _DashboardPageState extends State<DashboardPage> {
       if (dt.month != monthInt) continue;
       if (dateInt != null && dt.day != dateInt) continue;
 
-      filteredTxs.add(Map<String, dynamic>.from(tx));
-      totalProfit += (tx['total_profit'] as num?)?.toDouble() ?? 0.0;
+      // Calculate actual profit on the fly for backwards compatibility with old records
+      double txProfit = 0.0;
+      final items = tx['pos_order_items'] as List? ?? [];
+      for (final item in items) {
+        final qty = (item['qty'] as num?)?.toInt() ?? 0;
+        final price = (item['price_at_sale'] as num?)?.toDouble() ?? 0.0;
+        final inv = item['inventories'] as Map<String, dynamic>?;
+        final capital = (inv?['capital_price'] as num?)?.toDouble() ??
+                        (item['profit_at_sale'] != null ? (price - (item['profit_at_sale'] as num).toDouble()) : (price * 0.90));
+        txProfit += (price - capital) * qty;
+      }
+
+      final txMap = Map<String, dynamic>.from(tx);
+      txMap['total_profit'] = txProfit;
+      filteredTxs.add(txMap);
+      totalProfit += txProfit;
     }
 
     // 4. Filter transaction items based on date/month/year

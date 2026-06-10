@@ -39,7 +39,11 @@ class _SalesCheckoutPageState extends State<SalesCheckoutPage> {
       if (userId == null) throw Exception('User tidak terautentikasi');
 
       final totalPrice = _cart.totalPrice;
-      final totalProfit = totalPrice * 0.10; // Asumsi profit 10%
+      double totalProfit = 0.0;
+      for (final entry in _cart.items.entries) {
+        final item = entry.value;
+        totalProfit += (item.price - item.capitalPrice) * item.quantity;
+      }
 
       // 1. Simpan data ke tabel pos_orders (Transaksi Penjualan)
       final orderResponse = await supabase.from('pos_orders').insert({
@@ -66,7 +70,7 @@ class _SalesCheckoutPageState extends State<SalesCheckoutPage> {
           'inventory_id': inventoryId,
           'qty': cartItem.quantity,
           'price_at_sale': cartItem.price,
-          'profit_at_sale': cartItem.price * 0.10,
+          'profit_at_sale': cartItem.price - cartItem.capitalPrice,
           'total_price': cartItem.price * cartItem.quantity,
         });
 
@@ -120,6 +124,7 @@ class _SalesCheckoutPageState extends State<SalesCheckoutPage> {
         productId,
         name: entry.productName,
         price: entry.price,
+        capitalPrice: entry.capitalPrice,
         imageUrl: entry.imageUrl,
       );
     });

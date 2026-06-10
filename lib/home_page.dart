@@ -323,7 +323,7 @@ class _HomePageState extends State<HomePage> {
       // 2. Fetch transactions & transaction items for items sold and profit
       final transactionsResponse = await supabase
           .from('pos_orders')
-          .select('total_profit, pos_order_items(qty)')
+          .select('total_profit, pos_order_items(qty, price_at_sale, profit_at_sale, inventories(capital_price))')
           .eq('user_id', userId);
 
       final txList = transactionsResponse as List;
@@ -331,11 +331,18 @@ class _HomePageState extends State<HomePage> {
       int itemsSold = 0;
 
       for (final tx in txList) {
-        totalProfit += (tx['total_profit'] as num?)?.toDouble() ?? 0.0;
+        double txProfit = 0.0;
         final items = tx['pos_order_items'] as List? ?? [];
         for (final item in items) {
-          itemsSold += (item['qty'] as num?)?.toInt() ?? 0;
+          final qty = (item['qty'] as num?)?.toInt() ?? 0;
+          final price = (item['price_at_sale'] as num?)?.toDouble() ?? 0.0;
+          final inv = item['inventories'] as Map<String, dynamic>?;
+          final capital = (inv?['capital_price'] as num?)?.toDouble() ??
+                          (item['profit_at_sale'] != null ? (price - (item['profit_at_sale'] as num).toDouble()) : (price * 0.90));
+          txProfit += (price - capital) * qty;
+          itemsSold += qty;
         }
+        totalProfit += txProfit;
       }
 
       if (mounted) {
@@ -491,7 +498,11 @@ class _HomePageState extends State<HomePage> {
       if (user == null) throw Exception('User tidak terautentikasi.');
       final userId = user.id;
       final totalPrice = _cart.totalPrice;
-      final totalProfit = totalPrice * 0.10; // 10% profit margin
+      double totalProfit = 0.0;
+      for (final entry in _cart.items.entries) {
+        final item = entry.value;
+        totalProfit += (item.price - item.capitalPrice) * item.quantity;
+      }
 
       // 1. Create transaction in DB
       final transactionResponse = await supabase.from('transactions').insert({
@@ -515,7 +526,7 @@ class _HomePageState extends State<HomePage> {
           'product_id': productId,
           'quantity': cartItem.quantity,
           'price_at_purchase': cartItem.price,
-          'profit_at_purchase': cartItem.price * 0.10,
+          'profit_at_purchase': cartItem.price - cartItem.capitalPrice,
         });
 
         // Fetch current stock to subtract from user's inventories
@@ -860,9 +871,10 @@ class _HomePageState extends State<HomePage> {
                                       ),
                                       IconButton(
                                         onPressed: () {
-                                          _cart.add(productId,
+                                           _cart.add(productId,
                                               name: entry.productName,
                                               price: entry.price,
+                                              capitalPrice: entry.capitalPrice,
                                               imageUrl: entry.imageUrl);
                                           setModalState(() {});
                                           setState(() {});

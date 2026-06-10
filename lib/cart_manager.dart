@@ -4,12 +4,14 @@ import 'dart:collection';
 class CartEntry {
   final String productName;
   final double price;
+  final double capitalPrice;
   final String? imageUrl;
   int quantity;
 
   CartEntry({
     required this.productName,
     required this.price,
+    required this.capitalPrice,
     this.imageUrl,
     this.quantity = 1,
   });
@@ -50,13 +52,17 @@ class CartManager {
 
   // ── Mutations ──────────────────────────────────────────────
   void add(String productId,
-      {required String name, required double price, String? imageUrl}) {
+      {required String name,
+      required double price,
+      required double capitalPrice,
+      String? imageUrl}) {
     if (_items.containsKey(productId)) {
       _items[productId]!.quantity++;
     } else {
       _items[productId] = CartEntry(
         productName: name,
         price: price,
+        capitalPrice: capitalPrice,
         imageUrl: imageUrl,
         quantity: 1,
       );

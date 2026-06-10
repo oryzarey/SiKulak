@@ -75,6 +75,7 @@ class InventoryItem {
   final String? imageUrl;
   final DateTime? expDate;
   final DateTime? updatedAt;
+  final int leadTime;
 
   const InventoryItem({
     required this.id,
@@ -85,6 +86,7 @@ class InventoryItem {
     this.imageUrl,
     this.expDate,
     this.updatedAt,
+    this.leadTime = 3,
   });
 
   factory InventoryItem.fromJson(Map<String, dynamic> json) {
@@ -97,6 +99,7 @@ class InventoryItem {
       imageUrl: json['image_url'] as String? ?? json['image'] as String?,
       expDate: json['exp_date'] != null ? DateTime.tryParse(json['exp_date'].toString()) : null,
       updatedAt: json['updated_at'] != null ? DateTime.tryParse(json['updated_at'].toString()) : null,
+      leadTime: (json['lead_time'] as num?)?.toInt() ?? 3,
     );
   }
 }
