@@ -205,7 +205,7 @@ class _InventoryPageState extends State<InventoryPage> {
 				final imageUrl = p['image_url'] as String?;
 				final brand = p['brand'] as String? ?? '';
 				final rating = (p['rating'] as num?)?.toDouble() ?? 4.5;
-				final leadTime = (p['lead_time'] as num?)?.toInt() ?? 3;
+				final leadTime = (p['lead_time'] as num?)?.toInt() ?? 0;
 				final categoryId = p['category_id']?.toString() ?? '';
 
 				String catName = '';
@@ -263,7 +263,7 @@ class _InventoryPageState extends State<InventoryPage> {
 					imageUrl: (json['image_url']?.toString() ?? '').isNotEmpty
 											? json['image_url'].toString()
 											: nameToImage[name],
-					leadTime: (json['lead_time'] as num?)?.toInt() ?? (nameToLeadTime[name] ?? 3),
+					leadTime: (json['lead_time'] as num?)?.toInt() ?? (nameToLeadTime[name] ?? 0),
 				);
 			}).toList();
 
@@ -344,7 +344,7 @@ class _InventoryPageState extends State<InventoryPage> {
         final imageUrl = p['image_url'] as String?;
         final brand = p['brand'] as String? ?? '';
         final rating = (p['rating'] as num?)?.toDouble() ?? 4.5;
-        final leadTime = (p['lead_time'] as num?)?.toInt() ?? 3;
+        final leadTime = (p['lead_time'] as num?)?.toInt() ?? 0;
         final categoryId = p['category_id']?.toString() ?? '';
 
         String catName = '';
@@ -403,7 +403,7 @@ class _InventoryPageState extends State<InventoryPage> {
           imageUrl: (json['image_url']?.toString() ?? '').isNotEmpty
                       ? json['image_url'].toString()
                       : nameToImage[name],
-          leadTime: (json['lead_time'] as num?)?.toInt() ?? (nameToLeadTime[name] ?? 3),
+          leadTime: (json['lead_time'] as num?)?.toInt() ?? (nameToLeadTime[name] ?? 0),
         );
       }).toList();
 
@@ -453,7 +453,7 @@ class _InventoryPageState extends State<InventoryPage> {
     final double stdDevLeadTime = stdDev * sqrt(lt);
     final double ss = zValue * stdDevLeadTime;
 
-    return ss.round().clamp(1, 9999);
+    return ss.round().clamp(0, 9999);
   }
 
   // ── Filtered products by stock ─────────────────────────────

@@ -31,7 +31,7 @@ class Product {
     required this.rating,
     this.reviews = 0,
     this.imageUrl,
-    this.leadTime = 3,
+    this.leadTime = 0,
   });
 
   factory Product.fromJson(Map<String, dynamic> json) {
@@ -60,7 +60,7 @@ class Product {
       rating: (json['rating'] as num?)?.toDouble() ?? 0.0,
       reviews: (json['reviews'] as num?)?.toInt() ?? 0,
       imageUrl: json['image_url'] as String?,
-      leadTime: (json['lead_time'] as num?)?.toInt() ?? 3,
+      leadTime: (json['lead_time'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -86,7 +86,7 @@ class InventoryItem {
     this.imageUrl,
     this.expDate,
     this.updatedAt,
-    this.leadTime = 3,
+    this.leadTime = 0,
   });
 
   factory InventoryItem.fromJson(Map<String, dynamic> json) {
@@ -99,7 +99,7 @@ class InventoryItem {
       imageUrl: json['image_url'] as String? ?? json['image'] as String?,
       expDate: json['exp_date'] != null ? DateTime.tryParse(json['exp_date'].toString()) : null,
       updatedAt: json['updated_at'] != null ? DateTime.tryParse(json['updated_at'].toString()) : null,
-      leadTime: (json['lead_time'] as num?)?.toInt() ?? 3,
+      leadTime: (json['lead_time'] as num?)?.toInt() ?? 0,
     );
   }
 }

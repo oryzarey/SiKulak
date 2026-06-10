@@ -470,7 +470,7 @@ class _PosPageState extends State<PosPage> {
 						'image_url': imageUrl,
 						'selling_price': (inv['selling_price'] as num?)?.toDouble() ?? 0.0,
 						'qty_available': (inv['qty_available'] as num?)?.toInt() ?? 0,
-						'lead_time': (inv['lead_time'] as num?)?.toInt() ?? 3,
+						'lead_time': (inv['lead_time'] as num?)?.toInt() ?? 0,
 						'total_sold': qty,
 					};
 				}
@@ -674,8 +674,8 @@ class _PosPageState extends State<PosPage> {
 		final stdDev = dailyAvg > 0 ? (dailyAvg * 0.5) : 1.05;
 		const double zValue = 1.65;
 		final lt = item.leadTime.toDouble();
-		final ss = zValue * stdDev * sqrt(lt > 0 ? lt : 1);
-		return ss.round().clamp(1, 9999);
+		final ss = zValue * stdDev * sqrt(lt);
+		return ss.round().clamp(0, 9999);
 	}
 
 	Color _stockColor(InventoryItem item) {
@@ -1555,7 +1555,7 @@ class _PosPageState extends State<PosPage> {
 		final sellingPrice = item['selling_price'] as double? ?? 0.0;
 		final qtyAvailable = item['qty_available'] as int? ?? 0;
 		final totalSold = item['total_sold'] as int? ?? 0;
-		final leadTime = item['lead_time'] as int? ?? 3;
+		final leadTime = item['lead_time'] as int? ?? 0;
 		final hasImage = (imageUrl ?? '').trim().isNotEmpty;
 
 		final Color rankColor = switch (rank) {

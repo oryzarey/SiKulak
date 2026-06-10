@@ -24,7 +24,7 @@ class _AddItemPageState extends State<AddItemPage> {
   final TextEditingController _capitalPriceController = TextEditingController(); // Harga Beli
   final TextEditingController _expDateController = TextEditingController();
   final TextEditingController _quantityController = TextEditingController(); // New controller for quantity
-  final TextEditingController _leadTimeController = TextEditingController(text: '3');
+  final TextEditingController _leadTimeController = TextEditingController(text: '0');
   
   int _quantity = 1;
   String? _imageUrl;
@@ -188,7 +188,7 @@ class _AddItemPageState extends State<AddItemPage> {
     final name = _nameController.text.trim();
     final sellingPrice = double.tryParse(_sellingPriceController.text) ?? 0.0;
     final capitalPrice = double.tryParse(_capitalPriceController.text) ?? 0.0;
-    final leadTime = int.tryParse(_leadTimeController.text) ?? 3;
+    final leadTime = int.tryParse(_leadTimeController.text) ?? 0;
     
     String? expDateIso;
     if (_selectedDate != null) {
