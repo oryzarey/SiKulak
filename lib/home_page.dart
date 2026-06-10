@@ -24,7 +24,6 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   // ── State ──────────────────────────────────────────────────
-  final CartManager _cart = CartManager();
   final Set<String> _wishlistItems = {}; // local-only (no BE table)
   String? _selectedCategoryId; // null = "Semua Produk"
   int _selectedNavItem = 0;
@@ -44,6 +43,8 @@ class _HomePageState extends State<HomePage> {
   int _itemsSoldCount = 0;
   double _totalProfit = 0.0;
   bool _isProfitVisible = true;
+  List<Map<String, dynamic>> _allTransactions = [];
+  String _selectedPeriod = 'Hari';
 
 
 
@@ -152,6 +153,20 @@ class _HomePageState extends State<HomePage> {
         // Insert each product into inventories
         for (final p in list) {
           final price = (p['price'] as num?)?.toDouble() ?? 10000.0;
+          
+          String catName = '';
+          final catObj = p['category'] ?? p['categories'];
+          if (catObj is String) {
+            catName = catObj;
+          } else if (catObj is Map) {
+            catName = (catObj['name'] ?? catObj['nama'] ?? '').toString();
+          } else if (catObj is List && catObj.isNotEmpty) {
+            final first = catObj.first;
+            if (first is Map) {
+              catName = (first['name'] ?? first['nama'] ?? '').toString();
+            }
+          }
+
           await supabase.from('inventories').insert({
             'user_id': userId,
             'name': p['name'],
@@ -159,12 +174,69 @@ class _HomePageState extends State<HomePage> {
             'capital_price': price * 0.90,
             'selling_price': price,
             'exp_date': null,
+            'image_url': p['image_url'],
+            'brand': p['brand'],
+            'rating': p['rating'],
+            'lead_time': p['lead_time'],
+            'category_id': p['category_id'],
+            'category_name': catName.isNotEmpty ? catName : (p['category_name'] ?? ''),
           });
         }
         debugPrint('[SiKulak] Inventory initialization complete.');
+      } else {
+        // Heal existing inventories if image_url or category_name is null
+        final unhealed = await supabase
+            .from('inventories')
+            .select('id, name, image_url')
+            .eq('user_id', userId);
+        
+        final listUnhealed = unhealed as List;
+        final needsHealing = listUnhealed.any((item) => item['image_url'] == null);
+        if (needsHealing) {
+          debugPrint('[SiKulak] Found inventories with null image_url. Healing from products catalog...');
+          final globalProducts = await supabase.from('products').select();
+          final Map<String, Map<String, dynamic>> prodMap = {};
+          for (final p in globalProducts as List) {
+            final name = (p['name'] ?? '') as String;
+            if (name.isNotEmpty) {
+              prodMap[name] = p;
+            }
+          }
+          
+          for (final item in listUnhealed) {
+            if (item['image_url'] == null) {
+              final name = (item['name'] ?? '') as String;
+              final p = prodMap[name];
+              if (p != null) {
+                String catName = '';
+                final catObj = p['category'] ?? p['categories'];
+                if (catObj is String) {
+                  catName = catObj;
+                } else if (catObj is Map) {
+                  catName = (catObj['name'] ?? catObj['nama'] ?? '').toString();
+                } else if (catObj is List && catObj.isNotEmpty) {
+                  final first = catObj.first;
+                  if (first is Map) {
+                    catName = (first['name'] ?? first['nama'] ?? '').toString();
+                  }
+                }
+                
+                await supabase.from('inventories').update({
+                  'image_url': p['image_url'],
+                  'brand': p['brand'],
+                  'rating': p['rating'],
+                  'lead_time': p['lead_time'],
+                  'category_id': p['category_id'],
+                  'category_name': catName.isNotEmpty ? catName : (p['category_name'] ?? ''),
+                }).eq('id', item['id']);
+              }
+            }
+          }
+          debugPrint('[SiKulak] Inventory healing complete.');
+        }
       }
     } catch (e) {
-      debugPrint('[SiKulak] Error initializing inventory: $e');
+      debugPrint('[SiKulak] Error initializing/healing inventory: $e');
     }
   }
 
@@ -323,14 +395,45 @@ class _HomePageState extends State<HomePage> {
       // 2. Fetch transactions & transaction items for items sold and profit
       final transactionsResponse = await supabase
           .from('pos_orders')
-          .select('total_profit, pos_order_items(qty, price_at_sale, profit_at_sale, inventories(capital_price))')
+          .select('total_profit, created_at, pos_order_items(qty, price_at_sale, profit_at_sale, inventories(capital_price))')
           .eq('user_id', userId);
 
-      final txList = transactionsResponse as List;
-      double totalProfit = 0.0;
-      int itemsSold = 0;
+      final txList = (transactionsResponse as List?)?.cast<Map<String, dynamic>>() ?? [];
 
-      for (final tx in txList) {
+      if (mounted) {
+        setState(() {
+          _outOfStockCount = outOfStock;
+          _lowStockCount = lowStock;
+          _allTransactions = txList;
+          _updateInsightsForPeriod();
+        });
+      }
+    } catch (e) {
+      debugPrint('[SiKulak] Error fetching sales insights: $e');
+    }
+  }
+
+  void _updateInsightsForPeriod() {
+    double totalProfit = 0.0;
+    int itemsSold = 0;
+    final now = DateTime.now();
+
+    for (final tx in _allTransactions) {
+      final txCreatedAt = tx['created_at'];
+      if (txCreatedAt == null) continue;
+      final txDate = DateTime.tryParse(txCreatedAt.toString())?.toLocal();
+      if (txDate == null) continue;
+
+      bool match = false;
+      if (_selectedPeriod == 'Hari') {
+        match = txDate.year == now.year && txDate.month == now.month && txDate.day == now.day;
+      } else if (_selectedPeriod == 'Bulan') {
+        match = txDate.year == now.year && txDate.month == now.month;
+      } else if (_selectedPeriod == 'Tahun') {
+        match = txDate.year == now.year;
+      }
+
+      if (match) {
         double txProfit = 0.0;
         final items = tx['pos_order_items'] as List? ?? [];
         for (final item in items) {
@@ -344,18 +447,38 @@ class _HomePageState extends State<HomePage> {
         }
         totalProfit += txProfit;
       }
-
-      if (mounted) {
-        setState(() {
-          _outOfStockCount = outOfStock;
-          _lowStockCount = lowStock;
-          _itemsSoldCount = itemsSold;
-          _totalProfit = totalProfit;
-        });
-      }
-    } catch (e) {
-      debugPrint('[SiKulak] Error fetching sales insights: $e');
     }
+
+    _totalProfit = totalProfit;
+    _itemsSoldCount = itemsSold;
+  }
+
+  Widget _buildPeriodButton(String period) {
+    final isSelected = _selectedPeriod == period;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedPeriod = period;
+          _updateInsightsForPeriod();
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF2979FF) : Colors.transparent,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Text(
+          period,
+          style: TextStyle(
+            color: isSelected ? Colors.white : Colors.grey[600],
+            fontSize: 12,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+      ),
+    );
   }
 
 
@@ -485,112 +608,7 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  // ── Checkout Cart ──────────────────────────────────────────
-  Future<void> _checkoutCart(BuildContext context) async {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator()),
-    );
 
-    try {
-      final user = supabase.auth.currentUser;
-      if (user == null) throw Exception('User tidak terautentikasi.');
-      final userId = user.id;
-      final totalPrice = _cart.totalPrice;
-      double totalProfit = 0.0;
-      for (final entry in _cart.items.entries) {
-        final item = entry.value;
-        totalProfit += (item.price - item.capitalPrice) * item.quantity;
-      }
-
-      // 1. Create transaction in DB
-      final transactionResponse = await supabase.from('transactions').insert({
-        'user_id': userId,
-        'total_price': totalPrice,
-        'total_profit': totalProfit,
-        'status': 'completed',
-      }).select().single();
-
-      final transactionId = transactionResponse['id'];
-
-      // 2. Insert transaction items and update stock for each item
-      for (final entry in _cart.items.entries) {
-        final productIdStr = entry.key;
-        final cartItem = entry.value;
-        final productId = productIdStr;
-
-        // Insert item details
-        await supabase.from('transaction_items').insert({
-          'transaction_id': transactionId,
-          'product_id': productId,
-          'quantity': cartItem.quantity,
-          'price_at_purchase': cartItem.price,
-          'profit_at_purchase': cartItem.price - cartItem.capitalPrice,
-        });
-
-        // Fetch current stock to subtract from user's inventories
-        final invData = await supabase
-            .from('inventories')
-            .select('id, qty_available')
-            .eq('user_id', userId)
-            .or('id.eq.$productId,name.eq.${cartItem.productName}')
-            .maybeSingle();
-        if (invData != null) {
-          final invId = invData['id'];
-          final currentQty = (invData['qty_available'] as num?)?.toInt() ?? 0;
-          final newQty = (currentQty - cartItem.quantity).clamp(0, 999999);
-          await supabase
-              .from('inventories')
-              .update({
-                'qty_available': newQty,
-                'updated_at': DateTime.now().toUtc().toIso8601String(),
-              })
-              .eq('id', invId);
-        }
-      }
-
-      // 3. Clear cart and reload
-      _cart.clear();
-      _loadData();
-
-      if (!context.mounted) return;
-      Navigator.pop(context); // Dismiss spinner
-      Navigator.pop(context); // Dismiss cart modal
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Pembayaran berhasil! Transaksi disimpan ke database.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: Colors.white)),
-          backgroundColor: Colors.green.shade900.withValues(alpha: 0.8),
-          elevation: 0,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(30)),
-          margin: const EdgeInsets.only(bottom: 95, left: 40, right: 40),
-          duration: const Duration(seconds: 3),
-        ),
-      );
-    } catch (e) {
-      if (!context.mounted) return;
-      Navigator.pop(context); // Dismiss spinner
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Gagal melakukan checkout: $e',
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 12, color: Colors.white)),
-          backgroundColor: Colors.red.shade900.withValues(alpha: 0.8),
-          elevation: 0,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(30)),
-          margin: const EdgeInsets.only(bottom: 95, left: 40, right: 40),
-          duration: const Duration(seconds: 3),
-        ),
-      );
-    }
-  }
 
   // ── Low Stock Dialog ───────────────────────────────────────
   void _showLowStockDialog(List<InventoryItem> items) {
@@ -751,196 +769,7 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // ── Cart Modal ─────────────────────────────────────────────
-  void _showCartModal(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(20),
-          topRight: Radius.circular(20),
-        ),
-      ),
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: 0.6,
-          minChildSize: 0.4,
-          maxChildSize: 0.9,
-          builder: (context, scrollController) {
-            final entries = _cart.items.entries.toList();
-            return Container(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Keranjang Belanja',
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.bold)),
-                      GestureDetector(
-                          onTap: () => Navigator.pop(context),
-                          child: const Icon(Icons.close)),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  if (_cart.isEmpty)
-                    const Center(
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(vertical: 40),
-                        child: Text('Keranjang kosong',
-                            style: TextStyle(color: Colors.grey)),
-                      ),
-                    )
-                  else
-                    Expanded(
-                      child: ListView.builder(
-                        controller: scrollController,
-                        itemCount: entries.length,
-                        itemBuilder: (context, index) {
-                          final productId = entries[index].key;
-                          final entry = entries[index].value;
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 60,
-                                  height: 60,
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey[200],
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  clipBehavior: Clip.antiAlias,
-                                  child: entry.imageUrl != null &&
-                                          entry.imageUrl!.isNotEmpty
-                                      ? Image.network(entry.imageUrl!,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (_, __, ___) =>
-                                              Icon(Icons.image,
-                                                  color: Colors.grey[300]))
-                                      : Icon(Icons.image,
-                                          color: Colors.grey[300]),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(entry.productName,
-                                          style: const TextStyle(
-                                              fontWeight: FontWeight.bold)),
-                                      Text(
-                                          CartManager.formatPrice(entry.price),
-                                          style: const TextStyle(
-                                              color: Colors.grey)),
-                                    ],
-                                  ),
-                                ),
-                                Container(
-                                  decoration: BoxDecoration(
-                                    border: Border.all(color: Colors.blue),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      IconButton(
-                                        onPressed: () {
-                                          _cart.remove(productId);
-                                          setModalState(() {});
-                                          setState(() {});
-                                        },
-                                        icon: const Icon(
-                                            Icons.remove_circle_outline,
-                                            size: 18,
-                                            color: Colors.blue),
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(),
-                                      ),
-                                      Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 8),
-                                        child: Text(
-                                            entry.quantity.toString(),
-                                            style: const TextStyle(
-                                                fontWeight: FontWeight.bold)),
-                                      ),
-                                      IconButton(
-                                        onPressed: () {
-                                           _cart.add(productId,
-                                              name: entry.productName,
-                                              price: entry.price,
-                                              capitalPrice: entry.capitalPrice,
-                                              imageUrl: entry.imageUrl);
-                                          setModalState(() {});
-                                          setState(() {});
-                                        },
-                                        icon: const Icon(
-                                            Icons.add_circle_outline,
-                                            size: 18,
-                                            color: Colors.blue),
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  const SizedBox(height: 16),
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Colors.blue[400]!, Colors.blue[600]!],
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 16),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Total: ${_cart.totalItems} items',
-                                style: const TextStyle(
-                                    color: Colors.white, fontSize: 12)),
-                            Text(_cart.formattedTotalPrice,
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16)),
-                          ],
-                        ),
-                        ElevatedButton.icon(
-                          onPressed: () => _checkoutCart(context),
-                          icon: const Icon(Icons.payment),
-                          label: const Text('Lanjut'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: Colors.blue,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-      ),
-    );
-  }
+
 
   void _handleTabSelection(int index) {
     if (index == _selectedNavItem) return;
@@ -1234,13 +1063,40 @@ class _HomePageState extends State<HomePage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Sales Activity',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF2979FF),
-                    ),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Sales Activity',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF2979FF),
+                        ),
+                      ),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.05),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        padding: const EdgeInsets.all(2),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _buildPeriodButton('Hari'),
+                            _buildPeriodButton('Bulan'),
+                            _buildPeriodButton('Tahun'),
+                          ],
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 16),
                   
@@ -1270,24 +1126,32 @@ class _HomePageState extends State<HomePage> {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
-                                'Total Keuntungan',
-                                style: TextStyle(
+                              Text(
+                                _selectedPeriod == 'Hari'
+                                    ? 'Keuntungan Hari Ini'
+                                    : _selectedPeriod == 'Bulan'
+                                        ? 'Keuntungan Bulan Ini'
+                                        : 'Keuntungan Tahun Ini',
+                                style: const TextStyle(
                                   color: Colors.white70,
                                   fontSize: 14,
                                   fontWeight: FontWeight.w500,
                                 ),
                               ),
                               const SizedBox(height: 8),
-                              Text(
-                                _isProfitVisible
-                                    ? '${CartManager.formatPrice(_totalProfit)},00'
-                                    : 'Rp. ••••••',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 28,
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 0.5,
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  _isProfitVisible
+                                      ? '${CartManager.formatPrice(_totalProfit)},00'
+                                      : 'Rp. ••••••',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 0.5,
+                                  ),
                                 ),
                               ),
                             ],
@@ -1503,28 +1367,32 @@ class _HomePageState extends State<HomePage> {
             overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 8),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.baseline,
-            textBaseline: TextBaseline.alphabetic,
-            children: [
-              Text(
-                value,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 22,
-                  fontWeight: FontWeight.bold,
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  value,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
-              ),
-              const SizedBox(width: 4),
-              const Text(
-                'Qty',
-                style: TextStyle(
-                  color: Colors.white70,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w400,
+                const SizedBox(width: 4),
+                const Text(
+                  'Qty',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w400,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ],
       ),
