@@ -150,8 +150,8 @@ class _DashboardPageState extends State<DashboardPage> {
           .eq('user_id', userId);
 
       final txsResponse = await supabase
-          .from('transactions')
-          .select('total_profit, created_at, transaction_items(quantity, created_at)')
+          .from('pos_orders')
+          .select('total_profit, created_at, pos_order_items(qty, created_at)')
           .eq('user_id', userId);
 
       _rawProducts = productsResponse as List;
@@ -160,10 +160,10 @@ class _DashboardPageState extends State<DashboardPage> {
       // Extract transaction items from transactions response
       final List<dynamic> txItems = [];
       for (final tx in _rawTransactions) {
-        final items = tx['transaction_items'] as List? ?? [];
+        final items = tx['pos_order_items'] as List? ?? [];
         for (final item in items) {
           txItems.add({
-            'quantity': item['quantity'],
+            'quantity': item['qty'] ?? item['quantity'],
             'created_at': tx['created_at'] ?? item['created_at'],
           });
         }

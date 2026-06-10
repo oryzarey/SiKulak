@@ -322,8 +322,8 @@ class _HomePageState extends State<HomePage> {
 
       // 2. Fetch transactions & transaction items for items sold and profit
       final transactionsResponse = await supabase
-          .from('transactions')
-          .select('total_profit, transaction_items(quantity)')
+          .from('pos_orders')
+          .select('total_profit, pos_order_items(qty)')
           .eq('user_id', userId);
 
       final txList = transactionsResponse as List;
@@ -332,9 +332,9 @@ class _HomePageState extends State<HomePage> {
 
       for (final tx in txList) {
         totalProfit += (tx['total_profit'] as num?)?.toDouble() ?? 0.0;
-        final items = tx['transaction_items'] as List? ?? [];
+        final items = tx['pos_order_items'] as List? ?? [];
         for (final item in items) {
-          itemsSold += (item['quantity'] as num?)?.toInt() ?? 0;
+          itemsSold += (item['qty'] as num?)?.toInt() ?? 0;
         }
       }
 
