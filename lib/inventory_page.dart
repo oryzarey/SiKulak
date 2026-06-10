@@ -428,30 +428,32 @@ class _InventoryPageState extends State<InventoryPage> {
   int _calculateSafetyStock(Product product) {
     final sales = _productDailySales[product.id] ?? List.filled(30, 0);
 
-    // 1. Calculate daily average
+    // 1. Hitung rata-rata permintaan harian (d)
     final double totalSales = sales.fold(0.0, (sum, val) => sum + val);
-    final double mean = totalSales / 30.0;
+    final double d = totalSales / 30.0; // rata-rata permintaan harian
 
-    // 2. Calculate daily variance & standard deviation
+    // 2. Hitung standar deviasi permintaan harian (s_d)
     double varianceSum = 0.0;
     for (final s in sales) {
-      varianceSum += (s - mean) * (s - mean);
+      varianceSum += (s - d) * (s - d);
     }
     final double variance = varianceSum / 30.0;
-    final double stdDevDaily = variance > 0 ? sqrt(variance) : 0.0;
+    final double sD = variance > 0 ? sqrt(variance) : 0.0; // s_d
 
-    // Fallback standard deviation jika belum ada penjualan (biar safety stock awal bernilai 3 sachet)
-    double stdDev = stdDevDaily;
-    if (stdDev == 0) {
-      stdDev = 1.05; // 1.65 * 1.05 * sqrt(3) = 1.73 * 1.73 = 3
-    }
+    // 3. Lead time (l) dan standar deviasi lead time (s_l)
+    // s_l = 0 karena data variabilitas lead time supplier tidak tersedia
+    final double l = product.leadTime.toDouble(); // rata-rata lead time
+    const double sL = 0.0; // standar deviasi lead time (asumsi deterministik)
 
-    // 3. Safety Stock = Z * stdDev * sqrt(LT)
-    // Z = 1.65 (Service Level 95%)
-    const double zValue = 1.65;
-    final double lt = product.leadTime.toDouble();
-    final double stdDevLeadTime = stdDev * sqrt(lt);
-    final double ss = zValue * stdDevLeadTime;
+    // 4. Standar deviasi gabungan selama lead time:
+    //    σ_d = √(d² × s_l² + l × s_d²)
+    //    Menggabungkan ketidakpastian permintaan DAN lead time
+    final double sigmaD = sqrt((d * d * sL * sL) + (l * sD * sD));
+
+    // 5. Safety Stock = Z(SL) × σ_d
+    //    Z = 3 untuk Service Level 99,9% (stock-out probability 0,01%)
+    const double zValue = 3.0;
+    final double ss = zValue * sigmaD;
 
     return ss.round().clamp(0, 9999);
   }

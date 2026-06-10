@@ -664,17 +664,27 @@ class _PosPageState extends State<PosPage> {
 		);
 	}
 
-	/// Simplified safety stock for POS: Z=1.65, uses total sales from _salesCountMap
-	/// as avg daily demand proxy. Similar to inventory page but simplified.
+	/// Safety stock POS: Formula gabungan ketidakpastian permintaan + lead time
+	/// σ_d = √(d² × s_l² + l × s_d²), Z = 3 (Service Level 99,9%)
 	int _posSafetyStock(InventoryItem item) {
-		// We use total sold as a proxy for demand. Spread over 30 days.
+		// d = rata-rata permintaan harian (total terjual / 30 hari)
 		final totalSold = (_salesCountMap[item.id] ?? 0).toDouble();
-		final dailyAvg = totalSold / 30.0;
-		// stdDev fallback: if no sales, use 1.05 (gives ~3 units at LT=3)
-		final stdDev = dailyAvg > 0 ? (dailyAvg * 0.5) : 1.05;
-		const double zValue = 1.65;
-		final lt = item.leadTime.toDouble();
-		final ss = zValue * stdDev * sqrt(lt);
+		final double d = totalSold / 30.0;
+
+		// s_d = standar deviasi permintaan harian (aproksimasi: 50% dari rata-rata)
+		final double sD = d * 0.5;
+
+		// l = rata-rata lead time (hari), s_l = 0 (deterministik, data variabilitas supplier tidak tersedia)
+		final double l = item.leadTime.toDouble();
+		const double sL = 0.0;
+
+		// σ_d = √(d² × s_l² + l × s_d²)
+		final double sigmaD = sqrt((d * d * sL * sL) + (l * sD * sD));
+
+		// SS = Z(SL) × σ_d, Z = 3 untuk 99,9% service level
+		const double zValue = 3.0;
+		final double ss = zValue * sigmaD;
+
 		return ss.round().clamp(0, 9999);
 	}
 
