@@ -1,3 +1,42 @@
+String? findImageUrlFallback(String name, Map<String, String> nameToImage) {
+  if (name.isEmpty) return null;
+  // 1. Exact match
+  if (nameToImage.containsKey(name)) {
+    return nameToImage[name];
+  }
+  
+  final cleanName = name.toLowerCase().trim();
+  
+  // 2. Try substring match (e.g., catalog name contains the user name or vice versa)
+  for (final entry in nameToImage.entries) {
+    final catalogName = entry.key.toLowerCase();
+    if (catalogName.contains(cleanName) || cleanName.contains(catalogName)) {
+      return entry.value;
+    }
+  }
+  
+  // 3. Try matching based on shared keywords/words (length > 2)
+  final nameWords = cleanName.split(RegExp(r'\s+')).where((w) => w.length > 2).toSet();
+  String? bestMatch;
+  int maxWordOverlap = 0;
+  
+  for (final entry in nameToImage.entries) {
+    final catalogName = entry.key.toLowerCase();
+    final catalogWords = catalogName.split(RegExp(r'\s+')).where((w) => w.length > 2).toSet();
+    final overlap = nameWords.intersection(catalogWords).length;
+    if (overlap > maxWordOverlap) {
+      maxWordOverlap = overlap;
+      bestMatch = entry.value;
+    }
+  }
+  
+  if (maxWordOverlap > 0) {
+    return bestMatch;
+  }
+  
+  return null;
+}
+
 /// Product from the shared catalog (products table in Supabase).
 class Product {
   final String id; // Represents the ID as a string for compatibility

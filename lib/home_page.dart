@@ -24,7 +24,6 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   // ── State ──────────────────────────────────────────────────
-  final Set<String> _wishlistItems = {}; // local-only (no BE table)
   String? _selectedCategoryId; // null = "Semua Produk"
   int _selectedNavItem = 0;
 
@@ -1294,17 +1293,6 @@ class _HomePageState extends State<HomePage> {
                     final product = _filteredProducts[index];
                     return _ProductCard(
                       product: product,
-                      isWishlisted:
-                          _wishlistItems.contains(product.id),
-                      onWishlistTap: () {
-                        setState(() {
-                          if (_wishlistItems.contains(product.id)) {
-                            _wishlistItems.remove(product.id);
-                          } else {
-                            _wishlistItems.add(product.id);
-                          }
-                        });
-                      },
                       onTap: () {
                         Navigator.of(context).push(
                           MaterialPageRoute(
@@ -1505,14 +1493,10 @@ class _CategoryChip extends StatelessWidget {
 class _ProductCard extends StatelessWidget {
   const _ProductCard({
     required this.product,
-    required this.isWishlisted,
-    required this.onWishlistTap,
     required this.onTap,
   });
 
   final Product product;
-  final bool isWishlisted;
-  final VoidCallback onWishlistTap;
   final VoidCallback onTap;
 
   @override
@@ -1558,27 +1542,7 @@ class _ProductCard extends StatelessWidget {
                             child: Icon(Icons.image,
                                 size: 50, color: Colors.grey[300])),
                   ),
-                  // Heart
-                  Positioned(
-                    top: 10,
-                    right: 10,
-                    child: GestureDetector(
-                      onTap: onWishlistTap,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.9),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                            isWishlisted
-                                ? Icons.favorite
-                                : Icons.favorite_border,
-                            color: Colors.red,
-                            size: 20),
-                      ),
-                    ),
-                  ),
+
                   // Price badge
                   Positioned(
                     bottom: 10,

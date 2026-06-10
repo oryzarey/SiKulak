@@ -311,9 +311,10 @@ class _PosPageState extends State<PosPage> {
 			final mappedItems = list.map((json) {
 				final name = (json['name'] ?? '') as String;
 				final imageUrl = json['image_url'] as String?;
-				if ((imageUrl == null || imageUrl.isEmpty) && nameToImage.containsKey(name)) {
+				final fallbackUrl = findImageUrlFallback(name, nameToImage);
+				if ((imageUrl == null || imageUrl.isEmpty) && fallbackUrl != null) {
 					final mutableJson = Map<String, dynamic>.from(json);
-					mutableJson['image_url'] = nameToImage[name];
+					mutableJson['image_url'] = fallbackUrl;
 					return InventoryItem.fromJson(mutableJson);
 				}
 				return InventoryItem.fromJson(json);
@@ -457,8 +458,9 @@ class _PosPageState extends State<PosPage> {
 
 				final name = inv['name']?.toString() ?? 'Produk';
 				String? imageUrl = inv['image_url']?.toString();
-				if ((imageUrl == null || imageUrl.isEmpty) && nameToImage.containsKey(name)) {
-					imageUrl = nameToImage[name];
+				final fallbackUrl = findImageUrlFallback(name, nameToImage);
+				if ((imageUrl == null || imageUrl.isEmpty) && fallbackUrl != null) {
+					imageUrl = fallbackUrl;
 				}
 
 				if (grouped.containsKey(id)) {

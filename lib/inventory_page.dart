@@ -262,7 +262,7 @@ class _InventoryPageState extends State<InventoryPage> {
 					rating: (json['rating'] as num?)?.toDouble() ?? (nameToRating[name] ?? 4.5),
 					imageUrl: (json['image_url']?.toString() ?? '').isNotEmpty
 											? json['image_url'].toString()
-											: nameToImage[name],
+											: findImageUrlFallback(name, nameToImage),
 					leadTime: (json['lead_time'] as num?)?.toInt() ?? (nameToLeadTime[name] ?? 3),
 				);
 			}).toList();
@@ -402,7 +402,7 @@ class _InventoryPageState extends State<InventoryPage> {
           rating: (json['rating'] as num?)?.toDouble() ?? (nameToRating[name] ?? 4.5),
           imageUrl: (json['image_url']?.toString() ?? '').isNotEmpty
                       ? json['image_url'].toString()
-                      : nameToImage[name],
+                      : findImageUrlFallback(name, nameToImage),
           leadTime: (json['lead_time'] as num?)?.toInt() ?? (nameToLeadTime[name] ?? 3),
         );
       }).toList();
