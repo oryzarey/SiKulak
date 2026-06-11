@@ -10,6 +10,7 @@ import 'notification_page.dart';
 import 'widgets/navbar.dart';
 import 'edit_item_page.dart';
 import 'add_item_page.dart';
+import 'inventory_abc_service.dart';
 
 class InventoryPage extends StatefulWidget {
   final String? initialQuery;
@@ -41,16 +42,31 @@ class _InventoryPageState extends State<InventoryPage> {
     'Stok Habis',
   ];
 
+  String _abcFilter = 'Semua';
+  final List<String> _abcFilters = [
+    'Semua',
+    'Paling Laku',
+    'Laku Standar',
+    'Jarang Dicari',
+  ];
+
   @override
   void initState() {
     super.initState();
     _searchController = TextEditingController(text: widget.initialQuery ?? '');
     _fetchProfile();
-    _fetchAllProducts();
+    _initializeData(); // Use a combined initializer
     _authStateSubscription = supabase.auth.onAuthStateChange.listen((data) {
       if (!mounted) return;
       setState(() {});
     });
+  }
+
+  Future<void> _initializeData() async {
+    // 1. Calculate ABC automatically in background
+    await InventoryABCService().calculateABC();
+    // 2. Fetch products (now with updated ABC classes)
+    await _fetchAllProducts();
   }
 
   Stream<List<Map<String, dynamic>>> _notificationStream() {
@@ -264,6 +280,7 @@ class _InventoryPageState extends State<InventoryPage> {
 											? json['image_url'].toString()
 											: nameToImage[name],
 					leadTime: (json['lead_time'] as num?)?.toInt() ?? (nameToLeadTime[name] ?? 0),
+					abcClass: json['abc_class']?.toString(),
 				);
 			}).toList();
 
@@ -458,18 +475,31 @@ class _InventoryPageState extends State<InventoryPage> {
     return ss.round().clamp(0, 9999);
   }
 
-  // ── Filtered products by stock ─────────────────────────────
+  // ── Filtered products by stock & ABC ─────────────────────────────
   List<Product> get _filteredProducts {
+    List<Product> list = _products;
+
+    // 1. Stock Filter
     switch (_stockFilter) {
       case 'Stock Tersedia':
-        return _products.where((p) => p.stock > _calculateSafetyStock(p)).toList();
+        list = list.where((p) => p.stock > _calculateSafetyStock(p)).toList();
+        break;
       case 'Stock Sedikit':
-        return _products.where((p) => p.stock > 0 && p.stock <= _calculateSafetyStock(p)).toList();
+        list = list.where((p) => p.stock > 0 && p.stock <= _calculateSafetyStock(p)).toList();
+        break;
       case 'Stok Habis':
-        return _products.where((p) => p.stock == 0).toList();
-      default: // 'Semua'
-        return _products;
+        list = list.where((p) => p.stock == 0).toList();
+        break;
     }
+
+    // 2. ABC Filter
+    if (_abcFilter != 'Semua') {
+      list = list.where((p) => 
+        InventoryABCService.getTurnoverLabel(p.abcClass) == _abcFilter
+      ).toList();
+    }
+
+    return list;
   }
 
   // ── Stock badge color helpers ──────────────────────────────
@@ -477,6 +507,15 @@ class _InventoryPageState extends State<InventoryPage> {
     if (product.stock == 0) return const Color(0xFFEF4444);
     if (product.stock <= _calculateSafetyStock(product)) return const Color(0xFFF59E0B);
     return const Color(0xFF22C55E);
+  }
+
+  Color _abcBadgeColor(String? abcClass) {
+    switch (abcClass) {
+      case 'A': return const Color(0xFF2979FF);
+      case 'B': return const Color(0xFFF59E0B);
+      case 'C': return const Color(0xFF64748B);
+      default: return const Color(0xFF94A3B8);
+    }
   }
 
   // ── BUILD ──────────────────────────────────────────────────
@@ -638,43 +677,64 @@ class _InventoryPageState extends State<InventoryPage> {
                       ),
                     ],
                   ),
+                  const SizedBox(height: 12),
+                  // ── NEW: DROPDOWNS BELOW BUTTONS ──
+                  Row(
+                    children: [
+                      // Ketersediaan Dropdown
+                      Expanded(
+                        child: Container(
+                          height: 42,
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(30),
+                            border: Border.all(color: const Color(0xFF2979FF), width: 1.2),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: _stockFilter,
+                              isExpanded: true,
+                              icon: const Icon(Icons.keyboard_arrow_down, size: 20, color: Color(0xFF2979FF)),
+                              style: const TextStyle(fontSize: 12, color: Color(0xFF2979FF), fontWeight: FontWeight.w700, fontFamily: 'Poppins'),
+                              items: _stockFilters.map((f) => DropdownMenuItem(
+                                value: f, 
+                                child: Text(f == 'Semua' ? 'Ketersediaan' : f)
+                              )).toList(),
+                              onChanged: (val) => setState(() => _stockFilter = val!),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      // Perputaran Dropdown
+                      Expanded(
+                        child: Container(
+                          height: 42,
+                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(30),
+                            border: Border.all(color: const Color(0xFF2979FF), width: 1.2),
+                          ),
+                          child: DropdownButtonHideUnderline(
+                            child: DropdownButton<String>(
+                              value: _abcFilter,
+                              isExpanded: true,
+                              icon: const Icon(Icons.keyboard_arrow_down, size: 20, color: Color(0xFF2979FF)),
+                              style: const TextStyle(fontSize: 12, color: Color(0xFF2979FF), fontWeight: FontWeight.w700, fontFamily: 'Poppins'),
+                              items: _abcFilters.map((f) => DropdownMenuItem(
+                                value: f, 
+                                child: Text(f == 'Semua' ? 'Perputaran Barang' : f)
+                              )).toList(),
+                              onChanged: (val) => setState(() => _abcFilter = val!),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ],
-              ),
-            ),
-          ),
-
-          // ─────────── FILTER CHIPS (NON-SCROLLABLE) ───────────
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.only(top: 12, left: 20, right: 20, bottom: 4),
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: _stockFilters.map((filter) {
-                  final isSelected = _stockFilter == filter;
-                  return GestureDetector(
-                    onTap: () => setState(() => _stockFilter = filter),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: isSelected ? const Color(0xFF2979FF) : Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(
-                          color: const Color(0xFF2979FF),
-                          width: 1.2,
-                        ),
-                      ),
-                      child: Text(
-                        filter,
-                        style: TextStyle(
-                          color: isSelected ? Colors.white : const Color(0xFF2979FF),
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  );
-                }).toList(),
               ),
             ),
           ),
@@ -804,26 +864,62 @@ class _InventoryPageState extends State<InventoryPage> {
       ),
       child: Row(
         children: [
-          // Left: Square product image
-          Container(
-            width: 72,
-            height: 72,
-            decoration: BoxDecoration(
-              color: const Color(0xFFF1F5F9),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: product.imageUrl != null && product.imageUrl!.isNotEmpty
-                ? Image.network(
-                    product.imageUrl!,
-                    fit: BoxFit.cover,
-                    errorBuilder: (_, __, ___) => Center(
-                      child: Icon(Icons.image, size: 30, color: Colors.grey[300]),
+          // Left: Square product image with ABC Overlay
+          Stack(
+            children: [
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF1F5F9),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: product.imageUrl != null && product.imageUrl!.isNotEmpty
+                    ? Image.network(
+                        product.imageUrl!,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => Center(
+                          child: Icon(Icons.image, size: 30, color: Colors.grey[300]),
+                        ),
+                      )
+                    : Center(
+                        child: Icon(Icons.image, size: 30, color: Colors.grey[300]),
+                      ),
+              ),
+              // ABC Class Overlay Circle
+              if (product.abcClass != null)
+                Positioned(
+                  top: 4,
+                  left: 4,
+                  child: Container(
+                    width: 18,
+                    height: 18,
+                    decoration: BoxDecoration(
+                      color: _abcBadgeColor(product.abcClass),
+                      shape: BoxShape.circle,
+                      border: Border.all(color: Colors.white, width: 1.5),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.1),
+                          blurRadius: 4,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
-                  )
-                : Center(
-                    child: Icon(Icons.image, size: 30, color: Colors.grey[300]),
+                    child: Center(
+                      child: Text(
+                        product.abcClass!,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 9,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
                   ),
+                ),
+            ],
           ),
           const SizedBox(width: 14),
           // Middle: Product name + stock badge

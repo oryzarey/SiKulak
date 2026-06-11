@@ -38,6 +38,10 @@ class _DashboardPageState extends State<DashboardPage> {
   String _userName = 'User';
   String _userEmail = 'user@gmail.com';
 
+  // ABC Analysis data
+  Map<String, double> _abcRevenueData = {'A': 0.0, 'B': 0.0, 'C': 0.0};
+  double _totalRevenueForAbc = 0.0;
+
   // Chart spots & configurations
   List<FlSpot> _chartSpots = const [
     FlSpot(0, 1),
@@ -159,6 +163,9 @@ class _DashboardPageState extends State<DashboardPage> {
 
       // Extract transaction items from transactions response
       final List<dynamic> txItems = [];
+      final Map<String, double> abcRev = {'A': 0.0, 'B': 0.0, 'C': 0.0};
+      double totalRev = 0.0;
+
       for (final tx in _rawTransactions) {
         final items = tx['pos_order_items'] as List? ?? [];
         for (final item in items) {
@@ -166,9 +173,21 @@ class _DashboardPageState extends State<DashboardPage> {
             'quantity': item['qty'] ?? item['quantity'],
             'created_at': tx['created_at'] ?? item['created_at'],
           });
+
+          // ABC Calculation for Dashboard
+          final price = (item['price_at_sale'] as num?)?.toDouble() ?? 0.0;
+          final qty = (item['qty'] as num?)?.toInt() ?? 0;
+          final rev = price * qty;
+          final inv = item['inventories'] as Map<String, dynamic>?;
+          final abcClass = inv?['abc_class']?.toString() ?? 'C';
+          
+          abcRev[abcClass] = (abcRev[abcClass] ?? 0.0) + rev;
+          totalRev += rev;
         }
       }
       _rawTransactionItems = txItems;
+      _abcRevenueData = abcRev;
+      _totalRevenueForAbc = totalRev;
 
       _calculateFilteredStats();
     } catch (e) {
@@ -408,6 +427,37 @@ class _DashboardPageState extends State<DashboardPage> {
           }).toList(),
         ),
       ),
+    );
+  }
+
+  Widget _buildLegendItem(String label, Color color, double value) {
+    return Row(
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(3),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+              ),
+              Text(
+                'Rp ${CartManager.formatPrice(value).replaceFirst('Rp. ', '')}',
+                style: TextStyle(fontSize: 10, color: Colors.grey[500]),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 
@@ -715,6 +765,96 @@ class _DashboardPageState extends State<DashboardPage> {
             ),
           ),
 
+          // ── ABC Performance Summary (Pie Chart) ──────────
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(20),
+                  boxShadow: _getCustomShadow(),
+                  border: Border.all(color: const Color(0xFFF1F5F9)),
+                ),
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Ringkasan Performa Stok',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Color(0xFF0F172A),
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Kontribusi Omzet berdasarkan Kelas ABC',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[500],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    Row(
+                      children: [
+                        // Pie Chart
+                        SizedBox(
+                          width: 140,
+                          height: 140,
+                          child: PieChart(
+                            PieChartData(
+                              sectionsSpace: 4,
+                              centerSpaceRadius: 35,
+                              sections: [
+                                PieChartSectionData(
+                                  value: _abcRevenueData['A'] ?? 0,
+                                  color: const Color(0xFF2979FF),
+                                  title: '${((_abcRevenueData['A'] ?? 0) / (_totalRevenueForAbc > 0 ? _totalRevenueForAbc : 1) * 100).toStringAsFixed(0)}%',
+                                  radius: 40,
+                                  titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+                                ),
+                                PieChartSectionData(
+                                  value: _abcRevenueData['B'] ?? 0,
+                                  color: const Color(0xFFF59E0B),
+                                  title: '${((_abcRevenueData['B'] ?? 0) / (_totalRevenueForAbc > 0 ? _totalRevenueForAbc : 1) * 100).toStringAsFixed(0)}%',
+                                  radius: 35,
+                                  titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+                                ),
+                                PieChartSectionData(
+                                  value: _abcRevenueData['C'] ?? 0,
+                                  color: const Color(0xFF64748B),
+                                  title: '${((_abcRevenueData['C'] ?? 0) / (_totalRevenueForAbc > 0 ? _totalRevenueForAbc : 1) * 100).toStringAsFixed(0)}%',
+                                  radius: 30,
+                                  titleStyle: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.white),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 24),
+                        // Legend
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _buildLegendItem('Kelas A (Paling Laku)', const Color(0xFF2979FF), _abcRevenueData['A'] ?? 0),
+                              const SizedBox(height: 12),
+                              _buildLegendItem('Kelas B (Wajar)', const Color(0xFFF59E0B), _abcRevenueData['B'] ?? 0),
+                              const SizedBox(height: 12),
+                              _buildLegendItem('Kelas C (Jarang)', const Color(0xFF64748B), _abcRevenueData['C'] ?? 0),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+
           // ── Sales Trend Card with Bar Chart ──────────
           SliverToBoxAdapter(
             child: Padding(
@@ -833,6 +973,37 @@ class _StatCard extends StatelessWidget {
     required this.icon,
     required this.shadow,
   });
+
+  Widget _buildLegendItem(String label, Color color, double value) {
+    return Row(
+      children: [
+        Container(
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(3),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Color(0xFF1E293B)),
+              ),
+              Text(
+                'Rp ${CartManager.formatPrice(value).replaceFirst('Rp. ', '')}',
+                style: TextStyle(fontSize: 10, color: Colors.grey[500]),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
