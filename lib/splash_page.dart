@@ -34,20 +34,8 @@ class _SplashPageState extends State<SplashPage> with SingleTickerProviderStateM
 
     _animationController.forward();
 
-    // Navigate to HomePage or WelcomePage after animation
-    Future.delayed(const Duration(milliseconds: 2500), () {
-      if (mounted) {
-        final session = Supabase.instance.client.auth.currentSession;
-        if (session != null) {
-          Navigator.of(context).pushAndRemoveUntil(
-            MaterialPageRoute(builder: (_) => const HomePage()),
-            (route) => false,
-          );
-        } else {
-          Navigator.of(context).pushReplacementNamed('/welcome');
-        }
-      }
-    });
+    // Redundant navigation removed.
+    // Navigation is now handled globally in lib/main.dart by the Auth listener.
   }
 
   @override

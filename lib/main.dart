@@ -19,6 +19,9 @@ Future<void> main() async {
   await Supabase.initialize(
     url: 'https://ebwubdwcksqihxiycdna.supabase.co',
     anonKey: 'sb_publishable_0SXIMX7YlPmkey6HoQ_KYg_L76gdA_X',
+    authOptions: const FlutterAuthClientOptions(
+      authFlowType: AuthFlowType.implicit,
+    ),
   );
   // Initialize OS notifications
   await NotificationService().init();
@@ -38,6 +41,7 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   final _navigatorKey = GlobalKey<NavigatorState>();
+  bool _isRecoveringPassword = false;
 
   @override
   void initState() {
@@ -47,31 +51,36 @@ class _MyAppState extends State<MyApp> {
   }
 
   void _setupAuthListener() {
-    bool initialNavDone = false;
-
     supabase.auth.onAuthStateChange.listen((data) async {
       final AuthChangeEvent event = data.event;
       final Session? session = data.session;
 
+      debugPrint('Supabase Auth Event: $event');
+
       if (event == AuthChangeEvent.passwordRecovery) {
-        initialNavDone = true;
+        // Recovery harus instan, tanpa nunggu splash
+        while (_navigatorKey.currentState == null) {
+          await Future.delayed(const Duration(milliseconds: 50));
+        }
         _navigatorKey.currentState?.pushNamedAndRemoveUntil('/change-password', (route) => false);
         return;
       }
 
-      // Allow splash screen to show for a bit for normal app launches
-      if (!initialNavDone) {
+      // Untuk flow normal (app open/login/logout), beri waktu splash screen
+      if (event == AuthChangeEvent.initialSession || event == AuthChangeEvent.signedIn || event == AuthChangeEvent.signedOut) {
+        // Tunggu sebentar agar animasi splash kelihatan
         await Future.delayed(const Duration(milliseconds: 2000));
-        initialNavDone = true;
-      }
-
-      if (event == AuthChangeEvent.signedIn) {
-        InventoryRealtimeService().start();
-        // Double check we're not in password recovery state to be safe
-        _navigatorKey.currentState?.pushNamedAndRemoveUntil('/home', (route) => false);
-      } else if (event == AuthChangeEvent.signedOut || (event == AuthChangeEvent.initialSession && session == null)) {
-        InventoryRealtimeService().stop();
-        _navigatorKey.currentState?.pushNamedAndRemoveUntil('/welcome', (route) => false);
+        
+        // Cek lagi, jika ternyata dalam 2 detik ini ada event passwordRecovery yang masuk, batalkan navigasi normal
+        if (supabase.auth.currentSession == null && event == AuthChangeEvent.initialSession) {
+           _navigatorKey.currentState?.pushNamedAndRemoveUntil('/welcome', (route) => false);
+        } else if (event == AuthChangeEvent.signedIn) {
+          InventoryRealtimeService().start();
+          _navigatorKey.currentState?.pushNamedAndRemoveUntil('/home', (route) => false);
+        } else if (event == AuthChangeEvent.signedOut) {
+          InventoryRealtimeService().stop();
+          _navigatorKey.currentState?.pushNamedAndRemoveUntil('/welcome', (route) => false);
+        }
       }
     });
   }
