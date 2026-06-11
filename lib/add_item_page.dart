@@ -3,37 +3,33 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'main.dart';
-import 'models.dart';
 
-class EditItemPage extends StatefulWidget {
-  final Product product;
+class AddItemPage extends StatefulWidget {
   final VoidCallback onSaved;
 
-  const EditItemPage({
+  const AddItemPage({
     super.key,
-    required this.product,
     required this.onSaved,
   });
 
   @override
-  State<EditItemPage> createState() => _EditItemPageState();
+  State<AddItemPage> createState() => _AddItemPageState();
 }
 
-class _EditItemPageState extends State<EditItemPage> {
+class _AddItemPageState extends State<AddItemPage> {
   final _formKey = GlobalKey<FormState>();
   
-  late TextEditingController _nameController;
-  late TextEditingController _sellingPriceController; // Harga Jual
-  late TextEditingController _capitalPriceController; // Harga Beli
-  late TextEditingController _weightController;
-  late TextEditingController _expDateController;
-  late TextEditingController _leadTimeController;
+  final TextEditingController _nameController = TextEditingController();
+  final TextEditingController _sellingPriceController = TextEditingController(); // Harga Jual
+  final TextEditingController _capitalPriceController = TextEditingController(); // Harga Beli
+  final TextEditingController _expDateController = TextEditingController();
+  final TextEditingController _quantityController = TextEditingController(); // New controller for quantity
+  final TextEditingController _leadTimeController = TextEditingController(text: '0');
   
   int _quantity = 1;
   String? _imageUrl;
   Uint8List? _selectedImageBytes;
   bool _isSaving = false;
-  bool _isDeleting = false;
   bool _isUploadingImage = false;
   
   DateTime? _selectedDate;
@@ -41,16 +37,7 @@ class _EditItemPageState extends State<EditItemPage> {
   @override
   void initState() {
     super.initState();
-    _nameController = TextEditingController(text: widget.product.name);
-    _sellingPriceController = TextEditingController(text: widget.product.price.toStringAsFixed(0));
-    _capitalPriceController = TextEditingController(text: '0');
-    _quantity = widget.product.stock > 0 ? widget.product.stock : 1;
-    _imageUrl = widget.product.imageUrl;
-    _weightController = TextEditingController(text: '');
-    _expDateController = TextEditingController(text: '');
-    _leadTimeController = TextEditingController(text: widget.product.leadTime.toString());
-    
-    _loadInventoryDetails();
+    _quantityController.text = _quantity.toString();
   }
 
   @override
@@ -58,41 +45,10 @@ class _EditItemPageState extends State<EditItemPage> {
     _nameController.dispose();
     _sellingPriceController.dispose();
     _capitalPriceController.dispose();
-    _weightController.dispose();
     _expDateController.dispose();
+    _quantityController.dispose();
     _leadTimeController.dispose();
     super.dispose();
-  }
-
-  Future<void> _loadInventoryDetails() async {
-    try {
-      final response = await supabase
-          .from('inventories')
-          .select()
-          .eq('id', widget.product.id)
-          .maybeSingle();
-
-      if (response != null && mounted) {
-        setState(() {
-          _quantity = (response['qty_available'] as num?)?.toInt() ?? _quantity;
-          _sellingPriceController.text = ((response['selling_price'] as num?)?.toDouble() ?? widget.product.price).toStringAsFixed(0);
-          _capitalPriceController.text = ((response['capital_price'] as num?)?.toDouble() ?? 0).toStringAsFixed(0);
-          _nameController.text = (response['name'] ?? widget.product.name) as String;
-          _imageUrl = response['image_url'] as String? ?? widget.product.imageUrl;
-          
-          if (response['exp_date'] != null) {
-            final parsedDate = DateTime.tryParse(response['exp_date'].toString());
-            if (parsedDate != null) {
-              _selectedDate = parsedDate;
-              _expDateController.text = _formatDate(parsedDate);
-            }
-          }
-          _leadTimeController.text = ((response['lead_time'] as num?)?.toInt() ?? widget.product.leadTime).toString();
-        });
-      }
-    } catch (e) {
-      debugPrint('[SiKulak] Error loading detailed inventory data: $e');
-    }
   }
 
   String _formatDate(DateTime date) {
@@ -124,6 +80,29 @@ class _EditItemPageState extends State<EditItemPage> {
         _selectedDate = picked;
         _expDateController.text = _formatDate(picked);
       });
+    }
+  }
+
+  void _updateQuantity(int newQuantity) {
+    if (newQuantity < 0) newQuantity = 0;
+    setState(() {
+      _quantity = newQuantity;
+      _quantityController.text = _quantity.toString();
+    });
+  }
+
+  void _onQuantityChanged(String value) {
+    if (value.isEmpty) {
+      _updateQuantity(0);
+      return;
+    }
+    
+    final int? parsedValue = int.tryParse(value);
+    if (parsedValue != null && parsedValue >= 0) {
+      _updateQuantity(parsedValue);
+    } else {
+      // If invalid input, revert to current quantity
+      _quantityController.text = _quantity.toString();
     }
   }
 
@@ -198,146 +177,50 @@ class _EditItemPageState extends State<EditItemPage> {
     }
   }
 
-  Future<void> _handleDelete() async {
-    // Show confirmation dialog
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Hapus Produk'),
-        content: const Text(
-          'Apakah Anda yakin ingin menghapus produk ini?',
-          style: TextStyle(fontSize: 14),
-        ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text(
-              'BATAL',
-              style: TextStyle(color: Colors.grey),
-            ),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-            ),
-            child: const Text('HAPUS'),
-          ),
-        ],
-      ),
-    );
-
-    if (confirmed != true) return;
-
-    setState(() => _isDeleting = true);
-
-    try {
-      await supabase
-          .from('inventories')
-          .delete()
-          .eq('id', widget.product.id);
-      
-      _onDeleteSuccess();
-    } catch (e) {
-      debugPrint('[SiKulak] Delete failed: $e');
-      _onDeleteFailure(e.toString());
-    }
-  }
-
-  void _onDeleteSuccess() {
-    setState(() => _isDeleting = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: const Text(
-          'Produk berhasil dihapus!',
-          textAlign: TextAlign.center,
-          style: TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: Colors.green.shade900.withValues(alpha: 0.8),
-        elevation: 0,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-        margin: const EdgeInsets.only(bottom: 50, left: 40, right: 40),
-        duration: const Duration(seconds: 2),
-      ),
-    );
-    widget.onSaved();
-    Navigator.pop(context);
-  }
-
-  void _onDeleteFailure(String error) {
-    setState(() => _isDeleting = false);
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'Gagal menghapus produk: $error',
-          textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 12, color: Colors.white),
-        ),
-        backgroundColor: Colors.red.shade900.withValues(alpha: 0.8),
-        elevation: 0,
-        behavior: SnackBarBehavior.floating,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(30)),
-        margin: const EdgeInsets.only(bottom: 50, left: 40, right: 40),
-        duration: const Duration(seconds: 3),
-      ),
-    );
-  }
-
   Future<void> _handleSave() async {
     if (!_formKey.currentState!.validate()) return;
     
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
     setState(() => _isSaving = true);
     
     final name = _nameController.text.trim();
-    final sellingPrice = double.tryParse(_sellingPriceController.text) ?? widget.product.price;
-    final capitalPrice = double.tryParse(_capitalPriceController.text) ?? 0;
+    final sellingPrice = double.tryParse(_sellingPriceController.text) ?? 0.0;
+    final capitalPrice = double.tryParse(_capitalPriceController.text) ?? 0.0;
+    final leadTime = int.tryParse(_leadTimeController.text) ?? 0;
     
     String? expDateIso;
     if (_selectedDate != null) {
       expDateIso = _selectedDate!.toIso8601String();
-    } else if (_expDateController.text.isNotEmpty) {
-      try {
-        final parts = _expDateController.text.split('/');
-        if (parts.length == 3) {
-          final day = int.parse(parts[0]);
-          final month = int.parse(parts[1]);
-          final year = int.parse(parts[2]);
-          expDateIso = DateTime(year, month, day).toIso8601String();
-        }
-      } catch (_) {}
     }
 
-    final leadTime = int.tryParse(_leadTimeController.text) ?? widget.product.leadTime;
-
     try {
-      // Prepare update data
-      final Map<String, dynamic> updateData = {
+      // Prepare data for insertion, excluding null values
+      final Map<String, dynamic> insertData = {
+        'user_id': userId,
         'name': name,
         'qty_available': _quantity,
-        'selling_price': sellingPrice,
-        'capital_price': capitalPrice,
+        'selling_price': sellingPrice, // Harga Jual
+        'capital_price': capitalPrice, // Harga Beli
         'lead_time': leadTime,
-        'updated_at': DateTime.now().toUtc().toIso8601String(),
       };
       
-      // Only add optional fields if they have values
+      // Only add image_url if image was uploaded
       if (_imageUrl != null && _imageUrl!.isNotEmpty) {
-        updateData['image_url'] = _imageUrl;
+        insertData['image_url'] = _imageUrl;
       }
       
+      // Only add exp_date if selected
       if (expDateIso != null) {
-        updateData['exp_date'] = expDateIso;
+        insertData['exp_date'] = expDateIso;
       }
       
-      await supabase.from('inventories').update(updateData).eq('id', widget.product.id);
+      await supabase.from('inventories').insert(insertData);
       
       _onSaveSuccess();
     } catch (e) {
-      debugPrint('[SiKulak] Update failed: $e');
+      debugPrint('[SiKulak] Add item failed: $e');
       _onSaveFailure(e.toString());
     }
   }
@@ -347,7 +230,7 @@ class _EditItemPageState extends State<EditItemPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: const Text(
-          'Barang berhasil diperbarui!',
+          'Barang berhasil ditambahkan!',
           textAlign: TextAlign.center,
           style: TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.bold),
         ),
@@ -368,7 +251,7 @@ class _EditItemPageState extends State<EditItemPage> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Gagal memperbarui barang: $error',
+          'Gagal menambahkan barang: $error',
           textAlign: TextAlign.center,
           style: const TextStyle(fontSize: 12, color: Colors.white),
         ),
@@ -412,7 +295,7 @@ class _EditItemPageState extends State<EditItemPage> {
                   ),
                   const SizedBox(width: 8),
                   const Text(
-                    'Edit Produk',
+                    'Tambahkan Produk Baru',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 20,
@@ -455,7 +338,7 @@ class _EditItemPageState extends State<EditItemPage> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Mohon masukan detail produk',
+                        'Mohon masukan detail produk baru',
                         style: TextStyle(
                           fontSize: 12,
                           color: Colors.grey[500],
@@ -523,37 +406,21 @@ class _EditItemPageState extends State<EditItemPage> {
                                         ],
                                       ),
                                     )
-                                  : _imageUrl != null && _imageUrl!.isNotEmpty
-                                      ? ClipRRect(
-                                          borderRadius: BorderRadius.circular(16),
-                                          child: Stack(
-                                            fit: StackFit.expand,
-                                            children: [
-                                              Image.network(_imageUrl!, fit: BoxFit.cover),
-                                              Container(
-                                                color: Colors.black.withValues(alpha: 0.3),
-                                                child: const Center(
-                                                  child: Icon(Icons.edit, color: Colors.white, size: 28),
-                                                ),
-                                              ),
-                                            ],
+                                  : const Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(Icons.add_circle, color: Color(0xFF2979FF), size: 28),
+                                        SizedBox(height: 8),
+                                        Text(
+                                          'Tambahkan Foto',
+                                          style: TextStyle(
+                                            color: Color(0xFF2979FF),
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 13,
                                           ),
-                                        )
-                                      : const Column(
-                                          mainAxisAlignment: MainAxisAlignment.center,
-                                          children: [
-                                            Icon(Icons.add_circle, color: Color(0xFF2979FF), size: 28),
-                                            SizedBox(height: 8),
-                                            Text(
-                                              'Tambahkan Foto',
-                                              style: TextStyle(
-                                                color: Color(0xFF2979FF),
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 13,
-                                              ),
-                                            ),
-                                          ],
                                         ),
+                                      ],
+                                    ),
                         ),
                       ),
                       const SizedBox(height: 6),
@@ -577,7 +444,7 @@ class _EditItemPageState extends State<EditItemPage> {
                       TextFormField(
                         controller: _nameController,
                         style: const TextStyle(fontSize: 13, color: Colors.black87),
-                        decoration: _inputDecoration(hint: 'Masukkan nama item'),
+                        decoration: _inputDecoration(hint: 'Masukkan nama produk'),
                         validator: (value) {
                           if (value == null || value.trim().isEmpty) {
                             return 'Nama tidak boleh kosong';
@@ -587,7 +454,7 @@ class _EditItemPageState extends State<EditItemPage> {
                       ),
                       const SizedBox(height: 18),
 
-                      _buildLabel('Jumlah Stok *'),
+                      _buildLabel('Jumlah stok *'),
                       Row(
                         children: [
                           Container(
@@ -597,30 +464,48 @@ class _EditItemPageState extends State<EditItemPage> {
                             ),
                             child: Row(
                               children: [
+                                // Minus button
                                 IconButton(
                                   onPressed: () {
                                     if (_quantity > 0) {
-                                      setState(() {
-                                        _quantity--;
-                                      });
+                                      _updateQuantity(_quantity - 1);
                                     }
                                   },
                                   icon: const Icon(Icons.remove, color: Colors.black54, size: 20),
                                   constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
                                   padding: EdgeInsets.zero,
                                 ),
-                                Container(
-                                  width: 50,
-                                  alignment: Alignment.center,
-                                  child: Text(
-                                    '$_quantity',
+                                // Editable text field
+                                SizedBox(
+                                  width: 140,
+                                  child: TextFormField(
+                                    controller: _quantityController,
+                                    keyboardType: TextInputType.number,
+                                    textAlign: TextAlign.center,
                                     style: const TextStyle(
                                       fontWeight: FontWeight.bold,
                                       fontSize: 15,
                                       color: Color(0xFF1E293B),
                                     ),
+                                    decoration: InputDecoration(
+                                      border: InputBorder.none,
+                                      contentPadding: EdgeInsets.zero,
+                                      isDense: true,
+                                    ),
+                                    onChanged: _onQuantityChanged,
+                                    validator: (value) {
+                                      if (value == null || value.trim().isEmpty) {
+                                        return 'Stok tidak boleh kosong';
+                                      }
+                                      final int? quantity = int.tryParse(value);
+                                      if (quantity == null || quantity < 0) {
+                                        return 'Stok harus berupa angka positif';
+                                      }
+                                      return null;
+                                    },
                                   ),
                                 ),
+                                // Plus button
                                 Container(
                                   decoration: const BoxDecoration(
                                     color: Color(0xFF2979FF),
@@ -631,9 +516,7 @@ class _EditItemPageState extends State<EditItemPage> {
                                   ),
                                   child: IconButton(
                                     onPressed: () {
-                                      setState(() {
-                                        _quantity++;
-                                      });
+                                      _updateQuantity(_quantity + 1);
                                     },
                                     icon: const Icon(Icons.add, color: Colors.white, size: 20),
                                     constraints: const BoxConstraints(minWidth: 40, minHeight: 40),
@@ -733,7 +616,7 @@ class _EditItemPageState extends State<EditItemPage> {
                         width: double.infinity,
                         height: 52,
                         child: ElevatedButton(
-                          onPressed: (_isSaving || _isDeleting || _isUploadingImage) ? null : _handleSave,
+                          onPressed: (_isSaving || _isUploadingImage) ? null : _handleSave,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: const Color(0xFF2979FF),
                             foregroundColor: Colors.white,
@@ -748,34 +631,7 @@ class _EditItemPageState extends State<EditItemPage> {
                                   child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.white),
                                 )
                               : const Text(
-                                  'SIMPAN PERUBAHAN',
-                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 0.5),
-                                ),
-                        ),
-                      ),
-                      
-                      const SizedBox(height: 16),
-                      
-                      // Delete Button
-                      SizedBox(
-                        width: double.infinity,
-                        height: 52,
-                        child: OutlinedButton(
-                          onPressed: (_isSaving || _isDeleting || _isUploadingImage) ? null : _handleDelete,
-                          style: OutlinedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: Colors.red,
-                            side: const BorderSide(color: Colors.red, width: 1.5),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          ),
-                          child: _isDeleting
-                              ? const SizedBox(
-                                  width: 22,
-                                  height: 22,
-                                  child: CircularProgressIndicator(strokeWidth: 2.5, color: Colors.red),
-                                )
-                              : const Text(
-                                  'HAPUS PRODUK',
+                                  'TAMBAHKAN BARANG',
                                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 0.5),
                                 ),
                         ),

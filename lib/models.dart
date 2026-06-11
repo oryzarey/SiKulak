@@ -11,6 +11,7 @@ class Product {
   final double rating;
   final int reviews;
   final String? imageUrl;
+  final int leadTime;
 
   // Compatibility getters for the existing UI code
   double get supplierPrice => price;
@@ -30,6 +31,7 @@ class Product {
     required this.rating,
     this.reviews = 0,
     this.imageUrl,
+    this.leadTime = 0,
   });
 
   factory Product.fromJson(Map<String, dynamic> json) {
@@ -58,6 +60,7 @@ class Product {
       rating: (json['rating'] as num?)?.toDouble() ?? 0.0,
       reviews: (json['reviews'] as num?)?.toInt() ?? 0,
       imageUrl: json['image_url'] as String?,
+      leadTime: (json['lead_time'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -71,6 +74,8 @@ class InventoryItem {
   final double sellingPrice;
   final String? imageUrl;
   final DateTime? expDate;
+  final DateTime? updatedAt;
+  final int leadTime;
 
   const InventoryItem({
     required this.id,
@@ -80,6 +85,8 @@ class InventoryItem {
     this.sellingPrice = 0,
     this.imageUrl,
     this.expDate,
+    this.updatedAt,
+    this.leadTime = 0,
   });
 
   factory InventoryItem.fromJson(Map<String, dynamic> json) {
@@ -89,8 +96,10 @@ class InventoryItem {
       qtyAvailable: (json['qty_available'] as num?)?.toInt() ?? 0,
       capitalPrice: (json['capital_price'] as num?)?.toDouble() ?? 0.0,
       sellingPrice: (json['selling_price'] as num?)?.toDouble() ?? 0.0,
-      imageUrl: json['image_url'] as String?,
+      imageUrl: json['image_url'] as String? ?? json['image'] as String?,
       expDate: json['exp_date'] != null ? DateTime.tryParse(json['exp_date'].toString()) : null,
+      updatedAt: json['updated_at'] != null ? DateTime.tryParse(json['updated_at'].toString()) : null,
+      leadTime: (json['lead_time'] as num?)?.toInt() ?? 0,
     );
   }
 }
@@ -106,6 +115,85 @@ class Category {
     return Category(
       id: json['id']?.toString() ?? json['name']?.toString() ?? '',
       name: (json['name'] ?? '') as String,
+    );
+  }
+}
+
+/// User profile from the profiles table in Supabase.
+class UserProfile {
+  final String id;
+  final String fullName;
+  final String? avatarUrl;
+  final String? phoneNumber;
+  final String? storeName;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  const UserProfile({
+    required this.id,
+    required this.fullName,
+    this.avatarUrl,
+    this.phoneNumber,
+    this.storeName,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  factory UserProfile.fromJson(Map<String, dynamic> json) {
+    return UserProfile(
+      id: (json['id'] ?? '') as String,
+      fullName: (json['full_name'] ?? '') as String,
+      avatarUrl: json['avatar_url'] as String?,
+      phoneNumber: json['phone_number'] as String?,
+      storeName: json['store_name'] as String?,
+      createdAt: DateTime.tryParse(json['created_at'] as String? ?? '') ?? DateTime.now(),
+      updatedAt: DateTime.tryParse(json['updated_at'] as String? ?? '') ?? DateTime.now(),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'full_name': fullName,
+    'avatar_url': avatarUrl,
+    'phone_number': phoneNumber,
+    'store_name': storeName,
+    'created_at': createdAt.toIso8601String(),
+    'updated_at': updatedAt.toIso8601String(),
+  };
+}
+
+/// Notification model for notifications table
+class AppNotification {
+  final String id;
+  final String userId;
+  final String title;
+  final String? body;
+  final String? type;
+  final String? relatedInventoryId;
+  final bool isRead;
+  final DateTime createdAt;
+
+  const AppNotification({
+    required this.id,
+    required this.userId,
+    required this.title,
+    this.body,
+    this.type,
+    this.relatedInventoryId,
+    this.isRead = false,
+    required this.createdAt,
+  });
+
+  factory AppNotification.fromJson(Map<String, dynamic> json) {
+    return AppNotification(
+      id: json['id']?.toString() ?? '',
+      userId: json['user_id']?.toString() ?? '',
+      title: json['title'] ?? '',
+      body: json['body'],
+      type: json['type'],
+      relatedInventoryId: json['related_inventory_id']?.toString(),
+      isRead: json['is_read'] ?? false,
+      createdAt: DateTime.parse(json['created_at']),
     );
   }
 }

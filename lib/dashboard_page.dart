@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'widgets/navbar.dart';
 import 'main.dart';
+import 'models.dart';
 import 'cart_manager.dart';
 
 class DashboardPage extends StatefulWidget {
@@ -55,8 +56,22 @@ class _DashboardPageState extends State<DashboardPage> {
   @override
   void initState() {
     super.initState();
+    final now = DateTime.now();
+    _selectedYear = now.year.toString();
+    _selectedMonth = _getMonthNameIndonesian(now.month);
     _dates = ['Semua Tanggal', ...List.generate(31, (index) => (index + 1).toString())];
     _loadData();
+  }
+
+  String _getMonthNameIndonesian(int month) {
+    const months = [
+      'Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni',
+      'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember'
+    ];
+    if (month >= 1 && month <= 12) {
+      return months[month - 1];
+    }
+    return 'Januari';
   }
 
   Future<void> _loadData() async {
@@ -77,15 +92,17 @@ class _DashboardPageState extends State<DashboardPage> {
 
       final data = await supabase
           .from('profiles')
-          .select('full_name')
+          .select('full_name, avatar_url, updated_at')
           .eq('id', user.id)
           .maybeSingle();
 
       if (!mounted) return;
-      if (data != null && data['full_name'] != null) {
-        final raw = data['full_name'].toString();
+      if (data != null) {
+        final raw = (data['full_name'] ?? '').toString();
         setState(() {
-          _userName = raw.length > 12 ? '${raw.substring(0, 12)}...' : raw;
+          if (raw.isNotEmpty) {
+            _userName = raw.length > 12 ? '${raw.substring(0, 12)}...' : raw;
+          }
         });
       } else {
         _setUserNameFromAuth();
@@ -93,6 +110,16 @@ class _DashboardPageState extends State<DashboardPage> {
     } catch (_) {
       _setUserNameFromAuth();
     }
+  }
+
+  Stream<UserProfile?> _profileStream() {
+    final user = supabase.auth.currentUser;
+    if (user == null) return const Stream.empty();
+    return supabase
+        .from('profiles')
+        .stream(primaryKey: ['id'])
+        .eq('id', user.id)
+        .map((data) => data.isNotEmpty ? UserProfile.fromJson(data.first) : null);
   }
 
   void _setUserNameFromAuth() {
@@ -123,8 +150,8 @@ class _DashboardPageState extends State<DashboardPage> {
           .eq('user_id', userId);
 
       final txsResponse = await supabase
-          .from('transactions')
-          .select('total_profit, created_at, transaction_items(quantity, created_at)')
+          .from('pos_orders')
+          .select('total_profit, created_at, pos_order_items(qty, price_at_sale, profit_at_sale, created_at, inventories(capital_price))')
           .eq('user_id', userId);
 
       _rawProducts = productsResponse as List;
@@ -133,10 +160,10 @@ class _DashboardPageState extends State<DashboardPage> {
       // Extract transaction items from transactions response
       final List<dynamic> txItems = [];
       for (final tx in _rawTransactions) {
-        final items = tx['transaction_items'] as List? ?? [];
+        final items = tx['pos_order_items'] as List? ?? [];
         for (final item in items) {
           txItems.add({
-            'quantity': item['quantity'],
+            'quantity': item['qty'] ?? item['quantity'],
             'created_at': tx['created_at'] ?? item['created_at'],
           });
         }
@@ -172,41 +199,6 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   void _calculateFilteredStats() {
-    if (_rawProducts.isEmpty && _rawTransactions.isEmpty && _rawTransactionItems.isEmpty) {
-      if (mounted) {
-        setState(() {
-          _totalItemsCount = 100;
-          _outOfStockCount = 4;
-          _lowStockCount = 4;
-          _itemsSoldCount = 60;
-          _totalProfit = 15000000.0;
-          _chartSpots = const [
-            FlSpot(0, 1),
-            FlSpot(1, 2.5),
-            FlSpot(2, 1.8),
-            FlSpot(3, 3.5),
-            FlSpot(4, 3.2),
-            FlSpot(5, 4.8),
-            FlSpot(6, 6),
-          ];
-          _chartMaxY = 6.0;
-          _barMaxY = 20.0;
-          _barGroups = List.generate(7, (i) {
-            final color = i == 5 ? Colors.amber : (i == 6 ? Colors.green : Colors.blue);
-            return BarChartGroupData(x: i, barRods: [
-              BarChartRodData(
-                toY: [8.0, 10.0, 14.0, 15.0, 13.0, 10.0, 18.0][i],
-                color: color,
-                width: 12,
-                borderRadius: BorderRadius.circular(4),
-              )
-            ]);
-          });
-        });
-      }
-      return;
-    }
-
     // 1. Calculate overall metrics from products
     int totalItems = _rawProducts.length;
     int outOfStock = 0;
@@ -238,8 +230,22 @@ class _DashboardPageState extends State<DashboardPage> {
       if (dt.month != monthInt) continue;
       if (dateInt != null && dt.day != dateInt) continue;
 
-      filteredTxs.add(Map<String, dynamic>.from(tx));
-      totalProfit += (tx['total_profit'] as num?)?.toDouble() ?? 0.0;
+      // Calculate actual profit on the fly for backwards compatibility with old records
+      double txProfit = 0.0;
+      final items = tx['pos_order_items'] as List? ?? [];
+      for (final item in items) {
+        final qty = (item['qty'] as num?)?.toInt() ?? 0;
+        final price = (item['price_at_sale'] as num?)?.toDouble() ?? 0.0;
+        final inv = item['inventories'] as Map<String, dynamic>?;
+        final capital = (inv?['capital_price'] as num?)?.toDouble() ??
+                        (item['profit_at_sale'] != null ? (price - (item['profit_at_sale'] as num).toDouble()) : (price * 0.90));
+        txProfit += (price - capital) * qty;
+      }
+
+      final txMap = Map<String, dynamic>.from(tx);
+      txMap['total_profit'] = txProfit;
+      filteredTxs.add(txMap);
+      totalProfit += txProfit;
     }
 
     // 4. Filter transaction items based on date/month/year
@@ -281,16 +287,8 @@ class _DashboardPageState extends State<DashboardPage> {
     List<FlSpot> spots = [];
     double chartMaxY = 6.0;
     if (maxSpotVal == 0.0) {
-      spots = const [
-        FlSpot(0, 1),
-        FlSpot(1, 2.5),
-        FlSpot(2, 1.8),
-        FlSpot(3, 3.5),
-        FlSpot(4, 3.2),
-        FlSpot(5, 4.8),
-        FlSpot(6, 6),
-      ];
-      chartMaxY = 6.0;
+      spots = List.generate(7, (i) => FlSpot(i.toDouble(), 0));
+      chartMaxY = 10.0;
     } else {
       spots = List.generate(7, (i) => FlSpot(i.toDouble(), spotsData[i]));
       chartMaxY = maxSpotVal * 1.2;
@@ -315,19 +313,17 @@ class _DashboardPageState extends State<DashboardPage> {
     List<BarChartGroupData> barGroups = [];
     double barMaxY = 20.0;
     if (maxSalesVal == 0.0) {
-      final mockY = [8.0, 10.0, 14.0, 15.0, 13.0, 10.0, 18.0];
       barGroups = List.generate(7, (i) {
-        final color = i == 5 ? Colors.amber : (i == 6 ? Colors.green : Colors.blue);
         return BarChartGroupData(x: i, barRods: [
           BarChartRodData(
-            toY: mockY[i],
-            color: color,
+            toY: 0.0,
+            color: Colors.blue,
             width: 12,
             borderRadius: BorderRadius.circular(4),
           )
         ]);
       });
-      barMaxY = 20.0;
+      barMaxY = 10.0;
     } else {
       int maxIndex = 0;
       double currentMax = -1.0;
@@ -373,32 +369,36 @@ class _DashboardPageState extends State<DashboardPage> {
     }
   }
 
-  // Helper to generate the exact BoxShadow requested by user
+  // Helper to generate a soft modern BoxShadow
   List<BoxShadow> _getCustomShadow() {
     return [
       BoxShadow(
-        color: Colors.black.withValues(alpha: 0.15),
-        blurRadius: 4,
+        color: const Color(0xFF0F172A).withValues(alpha: 0.06),
+        blurRadius: 16,
         spreadRadius: 0,
-        offset: const Offset(0, 0),
+        offset: const Offset(0, 8),
       ),
     ];
   }
 
-  Widget _buildTimeFilter(String value, List<String> items, ValueChanged<String?> onChanged) {
+  Widget _buildTimeFilter(String value, List<String> items, ValueChanged<String?> onChanged, {required bool isDark}) {
+    final textColor = isDark ? Colors.white : const Color(0xFF2979FF);
+    final borderColor = isDark ? Colors.white30 : const Color(0xFF2979FF).withValues(alpha: 0.3);
+    final bgColor = isDark ? Colors.white.withValues(alpha: 0.12) : Colors.white;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white,
+        color: bgColor,
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.blue.withValues(alpha: 0.3)),
+        border: Border.all(color: borderColor),
       ),
       child: DropdownButtonHideUnderline(
         child: DropdownButton<String>(
           value: value,
           isDense: true,
-          icon: const Icon(Icons.keyboard_arrow_down, size: 16, color: Colors.blue),
-          style: const TextStyle(fontSize: 12, color: Colors.blue, fontWeight: FontWeight.w600),
+          dropdownColor: isDark ? const Color(0xFF0F223C) : Colors.white,
+          icon: Icon(Icons.keyboard_arrow_down, size: 16, color: textColor),
+          style: TextStyle(fontSize: 12, color: textColor, fontWeight: FontWeight.w600, fontFamily: 'Poppins'),
           onChanged: onChanged,
           items: items.map((String val) {
             return DropdownMenuItem<String>(
@@ -415,97 +415,124 @@ class _DashboardPageState extends State<DashboardPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       extendBody: true,
+      backgroundColor: Colors.white,
       body: CustomScrollView(
         slivers: [
-          // ── Blue Gradient Header ────────────────────
+          // ── Blue Gradient Header with Stacked Overlapping Card ──
           SliverToBoxAdapter(
-            child: Container(
-              decoration: const BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [Color(0xFF1E3A8A), Color(0xFF3B82F6)],
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
+            child: Stack(
+              children: [
+                // Gradient Header Box
+                Container(
+                  height: 180,
+                  width: double.infinity,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [Color(0xFF2979FF), Color(0xFF4C9BFF)],
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                    ),
+                  ),
+                  padding: const EdgeInsets.fromLTRB(24, 60, 24, 0),
+                  alignment: Alignment.topLeft,
+                  child: const Text(
+                    'Dashboard',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
+                      letterSpacing: -0.5,
+                    ),
+                  ),
                 ),
-              ),
-              padding: const EdgeInsets.fromLTRB(20, 50, 20, 40),
-              child: const Text(
-                'Dashboard',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 28,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-          ),
+                // Overlapping White Card
+                Container(
+                  margin: const EdgeInsets.only(top: 140),
+                  width: double.infinity,
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+                  ),
+                  padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+                  child: GestureDetector(
+                    onTap: () {
+                      Navigator.pop(context, 4);
+                    },
+                    child: StreamBuilder<UserProfile?>(
+                      stream: _profileStream(),
+                      builder: (context, snapshot) {
+                        final profile = snapshot.data;
+                        final userName = profile?.fullName ?? _userName;
+                        final avatarUrl = profile?.avatarUrl;
 
-          // ── User Profile Card ────────────────────────
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 20),
-              child: Container(
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                  boxShadow: _getCustomShadow(),
-                ),
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 70,
-                      height: 70,
-                      decoration: BoxDecoration(
-                        color: Colors.grey[200],
-                        shape: BoxShape.circle,
-                      ),
-                      child: Center(
-                        child: Icon(Icons.person, size: 40, color: Colors.grey[400]),
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Text(
-                                _userName,
-                                style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF2979FF),
-                                ),
+                        return Row(
+                          children: [
+                            Container(
+                              width: 64,
+                              height: 64,
+                              decoration: BoxDecoration(
+                                color: Colors.grey[50],
+                                shape: BoxShape.circle,
+                                border: Border.all(color: const Color(0xFFE2E8F0), width: 2),
                               ),
-                              const SizedBox(width: 8),
-                              const Icon(Icons.verified, color: Color(0xFF2979FF), size: 20),
-                            ],
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _userEmail,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey[600],
+                              child: avatarUrl != null && avatarUrl.isNotEmpty
+                                  ? ClipOval(
+                                      child: Image.network(
+                                        '$avatarUrl?t=${profile?.updatedAt.millisecondsSinceEpoch ?? DateTime.now().millisecondsSinceEpoch}',
+                                        fit: BoxFit.cover,
+                                        errorBuilder: (context, error, stackTrace) {
+                                          return const Icon(Icons.person,
+                                              size: 36, color: Colors.grey);
+                                        },
+                                      ),
+                                    )
+                                  : const Icon(Icons.person, size: 36, color: Colors.grey),
                             ),
-                          ),
-                        ],
-                      ),
+                            const SizedBox(width: 16),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    userName,
+                                    style: const TextStyle(
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xFF2979FF),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    _userEmail,
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      color: Colors.grey[500],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        );
+                      }
                     ),
-                  ],
+                  ),
                 ),
-              ),
+              ],
             ),
           ),
 
           // ── Stats Section ────────────────────────────
           SliverToBoxAdapter(
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
+              padding: const EdgeInsets.only(left: 24, top: 16, right: 24, bottom: 8),
               child: const Text(
                 'Stats',
-                style: TextStyle(fontSize: 21, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF0F172A),
+                ),
               ),
             ),
           ),
@@ -516,28 +543,33 @@ class _DashboardPageState extends State<DashboardPage> {
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               child: Container(
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(15),
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFF06152B), Color(0xFF0D3365), Color(0xFF1565C0)],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ),
+                  borderRadius: BorderRadius.circular(24),
                   boxShadow: _getCustomShadow(),
                 ),
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
+                    const Text(
                       'Total Keuntungan',
                       style: TextStyle(
-                        fontSize: 16,
-                        color: Colors.green[600],
+                        fontSize: 14,
+                        color: Colors.white70,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      CartManager.formatPrice(_totalProfit),
+                      '${CartManager.formatPrice(_totalProfit)},00',
                       style: const TextStyle(
                         fontSize: 32,
                         fontWeight: FontWeight.bold,
+                        color: Colors.white,
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -550,17 +582,17 @@ class _DashboardPageState extends State<DashboardPage> {
                           _buildTimeFilter(_selectedDate, _dates, (val) {
                             setState(() => _selectedDate = val!);
                             _calculateFilteredStats();
-                          }),
+                          }, isDark: true),
                           const SizedBox(width: 8),
                           _buildTimeFilter(_selectedMonth, _months, (val) {
                             setState(() => _selectedMonth = val!);
                             _calculateFilteredStats();
-                          }),
+                          }, isDark: true),
                           const SizedBox(width: 8),
                           _buildTimeFilter(_selectedYear, _years, (val) {
                             setState(() => _selectedYear = val!);
                             _calculateFilteredStats();
-                          }),
+                          }, isDark: true),
                         ],
                       ),
                     ),
@@ -574,10 +606,10 @@ class _DashboardPageState extends State<DashboardPage> {
                           gridData: FlGridData(
                             show: true,
                             drawVerticalLine: false,
-                            horizontalInterval: 2,
+                            horizontalInterval: _chartMaxY / 4 > 0 ? _chartMaxY / 4 : 2,
                             getDrawingHorizontalLine: (value) {
                               return FlLine(
-                                color: Colors.grey.withValues(alpha: 0.2),
+                                color: Colors.white.withValues(alpha: 0.08),
                                 strokeWidth: 1,
                               );
                             },
@@ -590,7 +622,7 @@ class _DashboardPageState extends State<DashboardPage> {
                                 reservedSize: 22,
                                 interval: 2,
                                 getTitlesWidget: (double value, TitleMeta meta) {
-                                  const style = TextStyle(color: Colors.grey, fontWeight: FontWeight.bold, fontSize: 10);
+                                  const style = TextStyle(color: Colors.white60, fontWeight: FontWeight.bold, fontSize: 10);
                                   
                                   // Prevent duplicate labels for fractional values
                                   if (value % 2 != 0) return const SizedBox.shrink();
@@ -631,13 +663,13 @@ class _DashboardPageState extends State<DashboardPage> {
                             LineChartBarData(
                               spots: _chartSpots,
                               isCurved: true,
-                              color: Colors.green[500],
-                              barWidth: 3,
+                              color: const Color(0xFF00E676),
+                              barWidth: 4,
                               isStrokeCapRound: true,
                               dotData: const FlDotData(show: false),
                               belowBarData: BarAreaData(
                                 show: true,
-                                color: Colors.green[100]?.withValues(alpha: 0.3),
+                                color: const Color(0xFF00E676).withValues(alpha: 0.15),
                               ),
                             ),
                           ],
@@ -652,7 +684,7 @@ class _DashboardPageState extends State<DashboardPage> {
 
           // ── Stats Grid ───────────────────────────────
           SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
             sliver: SliverGrid(
               gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
                 crossAxisCount: 2,
@@ -663,10 +695,10 @@ class _DashboardPageState extends State<DashboardPage> {
               delegate: SliverChildBuilderDelegate(
                 (context, index) {
                   final stats = [
-                    {'label': 'Items', 'value': _totalItemsCount.toString(), 'color': Colors.blue},
-                    {'label': 'Out of Stock', 'value': _outOfStockCount.toString(), 'color': Colors.red},
-                    {'label': 'Low Stock', 'value': _lowStockCount.toString(), 'color': Colors.amber},
-                    {'label': 'Items Sold', 'value': _itemsSoldCount.toString(), 'color': Colors.blue},
+                    {'label': 'Items', 'value': _totalItemsCount.toString(), 'color': const Color(0xFF2979FF), 'icon': Icons.inventory_2_outlined},
+                    {'label': 'Out of Stock', 'value': _outOfStockCount.toString(), 'color': const Color(0xFFEF4444), 'icon': Icons.remove_circle_outline},
+                    {'label': 'Low Stock', 'value': _lowStockCount.toString(), 'color': const Color(0xFFF59E0B), 'icon': Icons.warning_amber_rounded},
+                    {'label': 'Items Sold', 'value': _itemsSoldCount.toString(), 'color': const Color(0xFF10B981), 'icon': Icons.shopping_bag_outlined},
                   ];
 
                   final stat = stats[index];
@@ -674,6 +706,7 @@ class _DashboardPageState extends State<DashboardPage> {
                     label: stat['label'] as String,
                     value: stat['value'] as String,
                     color: stat['color'] as Color,
+                    icon: stat['icon'] as IconData,
                     shadow: _getCustomShadow(),
                   );
                 },
@@ -689,22 +722,31 @@ class _DashboardPageState extends State<DashboardPage> {
               child: Container(
                 decoration: BoxDecoration(
                   color: Colors.white,
-                  borderRadius: BorderRadius.circular(15),
+                  borderRadius: BorderRadius.circular(20),
                   boxShadow: _getCustomShadow(),
+                  border: Border.all(color: const Color(0xFFF1F5F9)),
                 ),
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(20),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'Grafik Penjualan (01 $_selectedMonth - 07 $_selectedMonth)',
+                    const Text(
+                      'Tren Penjualan Mingguan',
                       style: TextStyle(
                         fontSize: 16,
-                        color: Colors.blue[600],
-                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF0F172A),
+                        fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Periode: 01 $_selectedMonth - 07 $_selectedMonth',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.grey[500],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
                     // Bar Chart for Sales
                     SizedBox(
                       height: 180,
@@ -744,10 +786,10 @@ class _DashboardPageState extends State<DashboardPage> {
                           gridData: FlGridData(
                             show: true,
                             drawVerticalLine: false,
-                            horizontalInterval: 5,
+                            horizontalInterval: _barMaxY / 4 > 0 ? _barMaxY / 4 : 5,
                             getDrawingHorizontalLine: (value) {
                               return FlLine(
-                                color: Colors.grey.withValues(alpha: 0.2),
+                                color: Colors.grey.withValues(alpha: 0.1),
                                 strokeWidth: 1,
                               );
                             },
@@ -770,8 +812,7 @@ class _DashboardPageState extends State<DashboardPage> {
         selectedIndex: 3, // 3 for Dashboard (grid_view icon)
         onItemTapped: (index) {
           if (index == 3) return; // Already on dashboard
-          // Pop back to Home for any other tab — Home handles all routing
-          Navigator.pop(context);
+          Navigator.pop(context, index);
         },
       ),
     );
@@ -782,12 +823,14 @@ class _StatCard extends StatelessWidget {
   final String label;
   final String value;
   final Color color;
+  final IconData icon;
   final List<BoxShadow> shadow;
 
   const _StatCard({
     required this.label,
     required this.value,
     required this.color,
+    required this.icon,
     required this.shadow,
   });
 
@@ -796,29 +839,49 @@ class _StatCard extends StatelessWidget {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(15),
+        borderRadius: BorderRadius.circular(18),
         boxShadow: shadow,
+        border: Border.all(color: const Color(0xFFF1F5F9)),
       ),
       padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisAlignment: MainAxisAlignment.center,
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 16,
-              color: color,
-              fontWeight: FontWeight.w600,
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[600],
+                    fontWeight: FontWeight.w500,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
+          const SizedBox(width: 8),
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.1),
+              shape: BoxShape.circle,
             ),
+            child: Icon(icon, color: color, size: 22),
           ),
         ],
       ),

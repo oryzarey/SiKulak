@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'main.dart';
 import 'register_page.dart';
 import 'home_page.dart';
+import 'forgot_password_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -111,12 +112,14 @@ class _LoginPageState extends State<LoginPage>
           ),
 
           // Content
-          Column(
-            children: [
+          // Content
+          CustomScrollView(
+            physics: const ClampingScrollPhysics(),
+            slivers: [
               // Header section (blue)
-              Expanded(
-                flex: 3,
+              SliverToBoxAdapter(
                 child: SafeArea(
+                  bottom: false,
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -153,8 +156,8 @@ class _LoginPageState extends State<LoginPage>
               ),
 
               // White panel (bottom)
-              Expanded(
-                flex: 9,
+              SliverFillRemaining(
+                hasScrollBody: false,
                 child: ClipRRect(
                   borderRadius: const BorderRadius.only(
                     topLeft: Radius.circular(36),
@@ -162,185 +165,209 @@ class _LoginPageState extends State<LoginPage>
                   ),
                   child: Container(
                     color: Colors.white,
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(28, 32, 28, 24),
-                      child: Form(
-                        key: _formKey,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // Title
-                            const Text(
-                              'Masuk',
-                              style: TextStyle(
-                                fontFamily: 'Poppins',
-                                fontSize: 28,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF2979FF),
-                              ),
+                    padding: const EdgeInsets.fromLTRB(28, 32, 28, 24),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Title
+                          const Text(
+                            'Masuk',
+                            style: TextStyle(
+                              fontFamily: 'Poppins',
+                              fontSize: 28,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF2979FF),
                             ),
+                          ),
 
-                            const SizedBox(height: 8),
+                          const SizedBox(height: 8),
 
-                            const Text(
-                              'Silakan masuk ke akun anda',
-                              style: TextStyle(
-                                fontFamily: 'Poppins',
-                                fontSize: 13,
-                                color: Colors.black54,
-                              ),
+                          const Text(
+                            'Silakan masuk ke akun anda',
+                            style: TextStyle(
+                              fontFamily: 'Poppins',
+                              fontSize: 13,
+                              color: Colors.black54,
                             ),
+                          ),
 
-                            const SizedBox(height: 28),
+                          const SizedBox(height: 28),
 
-                            // ── Email Field ────────────────────────────
-                            _buildLabel('Email'),
-                            const SizedBox(height: 8),
-                            TextFormField(
-                              controller: _emailController,
-                              keyboardType: TextInputType.emailAddress,
-                              style: const TextStyle(
-                                fontFamily: 'Poppins',
-                                fontSize: 13,
-                                color: Colors.black87,
-                              ),
-                              validator: (value) {
-                                if (value == null || value.trim().isEmpty) {
-                                  return 'Email tidak boleh kosong';
-                                }
-                                if (!value.contains('@')) {
-                                  return 'Email tidak valid';
-                                }
-                                return null;
-                              },
-                              decoration: _inputDecoration(
-                                hint: 'Masukkan email anda',
-                                prefixIcon: Icons.mail_outline_rounded,
-                              ),
+                          // ── Email Field ────────────────────────────
+                          _buildLabel('Email'),
+                          const SizedBox(height: 8),
+                          TextFormField(
+                            controller: _emailController,
+                            keyboardType: TextInputType.emailAddress,
+                            style: const TextStyle(
+                              fontFamily: 'Poppins',
+                              fontSize: 13,
+                              color: Colors.black87,
                             ),
+                            validator: (value) {
+                              if (value == null || value.trim().isEmpty) {
+                                return 'Email tidak boleh kosong';
+                              }
+                              if (!value.contains('@')) {
+                                return 'Email tidak valid';
+                              }
+                              return null;
+                            },
+                            decoration: _inputDecoration(
+                              hint: 'Masukkan email anda',
+                              prefixIcon: Icons.mail_outline_rounded,
+                            ),
+                          ),
 
-                            const SizedBox(height: 16),
+                          const SizedBox(height: 16),
 
-                            // ── Password Field ─────────────────────────
-                            _buildLabel('Kata Sandi'),
-                            const SizedBox(height: 8),
-                            TextFormField(
-                              controller: _passwordController,
-                              obscureText: _obscurePassword,
-                              style: const TextStyle(
-                                fontFamily: 'Poppins',
-                                fontSize: 13,
-                                color: Colors.black87,
-                              ),
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Kata sandi tidak boleh kosong';
-                                }
-                                return null;
-                              },
-                              decoration: _inputDecoration(
-                                hint: 'Masukkan kata sandi anda',
-                                prefixIcon: Icons.lock_outline_rounded,
-                                suffixIcon: IconButton(
-                                  onPressed: () => setState(
-                                    () => _obscurePassword = !_obscurePassword,
-                                  ),
-                                  icon: Icon(
-                                    _obscurePassword
-                                        ? Icons.visibility_off_outlined
-                                        : Icons.visibility_outlined,
-                                    color: Colors.black38,
-                                    size: 20,
-                                  ),
+                          // ── Password Field ─────────────────────────
+                          _buildLabel('Kata Sandi'),
+                          const SizedBox(height: 8),
+                          TextFormField(
+                            controller: _passwordController,
+                            obscureText: _obscurePassword,
+                            style: const TextStyle(
+                              fontFamily: 'Poppins',
+                              fontSize: 13,
+                              color: Colors.black87,
+                            ),
+                            validator: (value) {
+                              if (value == null || value.isEmpty) {
+                                return 'Kata sandi tidak boleh kosong';
+                              }
+                              return null;
+                            },
+                            decoration: _inputDecoration(
+                              hint: 'Masukkan kata sandi anda',
+                              prefixIcon: Icons.lock_outline_rounded,
+                              suffixIcon: IconButton(
+                                onPressed: () => setState(
+                                  () => _obscurePassword = !_obscurePassword,
+                                ),
+                                icon: Icon(
+                                  _obscurePassword
+                                      ? Icons.visibility_off_outlined
+                                      : Icons.visibility_outlined,
+                                  color: Colors.black38,
+                                  size: 20,
                                 ),
                               ),
                             ),
+                          ),
 
-                            const SizedBox(height: 32),
+                          const SizedBox(height: 32),
 
-                            // ── Login Button ───────────────────────────
-                            SizedBox(
-                              width: double.infinity,
-                              height: 54,
-                              child: ElevatedButton(
-                                onPressed: _isLoading ? null : _handleLogin,
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF2979FF),
-                                  foregroundColor: Colors.white,
-                                  disabledBackgroundColor:
-                                      const Color(0xFF2979FF).withValues(alpha: 0.6),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(30),
-                                  ),
-                                  elevation: 0,
+                          // ── Login Button ───────────────────────────
+                          SizedBox(
+                            width: double.infinity,
+                            height: 54,
+                            child: ElevatedButton(
+                              onPressed: _isLoading ? null : _handleLogin,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: const Color(0xFF2979FF),
+                                foregroundColor: Colors.white,
+                                disabledBackgroundColor:
+                                    const Color(0xFF2979FF).withValues(alpha: 0.6),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(30),
                                 ),
-                                child: _isLoading
-                                    ? const SizedBox(
-                                        width: 22,
-                                        height: 22,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2.5,
-                                          color: Colors.white,
-                                        ),
-                                      )
-                                    : const Text(
-                                        'Masuk',
+                                elevation: 0,
+                              ),
+                              child: _isLoading
+                                  ? const SizedBox(
+                                      width: 22,
+                                      height: 22,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2.5,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Text(
+                                      'Masuk',
+                                      style: TextStyle(
+                                        fontFamily: 'Poppins',
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 16),
+
+                          // ── Don't have an account? ─────────────────
+                          Center(
+                            child: RichText(
+                              text: TextSpan(
+                                style: const TextStyle(
+                                  fontFamily: 'Poppins',
+                                  fontSize: 13,
+                                  color: Colors.black87,
+                                ),
+                                children: [
+                                  const TextSpan(
+                                      text: 'Belum punya akun? '),
+                                  WidgetSpan(
+                                    child: GestureDetector(
+                                      onTap: () {
+                                        Navigator.of(context).pushReplacement(
+                                          MaterialPageRoute(
+                                            builder: (_) =>
+                                                const RegisterPage(),
+                                          ),
+                                        );
+                                      },
+                                      child: const Text(
+                                        'Daftar',
                                         style: TextStyle(
                                           fontFamily: 'Poppins',
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                              ),
-                            ),
-
-                            const SizedBox(height: 16),
-
-                            // ── Don't have an account? ─────────────────
-                            Center(
-                              child: RichText(
-                                text: TextSpan(
-                                  style: const TextStyle(
-                                    fontFamily: 'Poppins',
-                                    fontSize: 13,
-                                    color: Colors.black87,
-                                  ),
-                                  children: [
-                                    const TextSpan(
-                                        text: 'Belum punya akun? '),
-                                    WidgetSpan(
-                                      child: GestureDetector(
-                                        onTap: () {
-                                          Navigator.of(context).pushReplacement(
-                                            MaterialPageRoute(
-                                              builder: (_) =>
-                                                  const RegisterPage(),
-                                            ),
-                                          );
-                                        },
-                                        child: const Text(
-                                          'Daftar',
-                                          style: TextStyle(
-                                            fontFamily: 'Poppins',
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w700,
-                                            color: Color(0xFF2979FF),
-                                            decoration:
-                                                TextDecoration.underline,
-                                            decorationColor:
-                                                Color(0xFF2979FF),
-                                          ),
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xFF2979FF),
+                                          decoration:
+                                              TextDecoration.underline,
+                                          decorationColor:
+                                              Color(0xFF2979FF),
                                         ),
                                       ),
                                     ),
-                                  ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+
+                          const SizedBox(height: 12),
+
+                          // ── Forgot Password Link ───────────────────
+                          Center(
+                            child: GestureDetector(
+                              onTap: () {
+                                Navigator.of(context).push(
+                                  MaterialPageRoute(
+                                    builder: (_) => const ForgotPasswordPage(),
+                                  ),
+                                );
+                              },
+                              child: const Text(
+                                'Lupa kata sandi',
+                                style: TextStyle(
+                                  fontFamily: 'Poppins',
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF2979FF),
+                                  decoration: TextDecoration.underline,
+                                  decorationColor: Color(0xFF2979FF),
                                 ),
                               ),
                             ),
+                          ),
 
-                            const SizedBox(height: 16),
-                          ],
-                        ),
+                          const SizedBox(height: 16),
+                        ],
                       ),
                     ),
                   ),

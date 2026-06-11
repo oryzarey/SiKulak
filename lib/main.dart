@@ -3,14 +3,25 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'welcome_page.dart';
 import 'splash_page.dart';
+import 'home_page.dart';
 import 'inventory_page.dart';
+import 'pos_page.dart';
+import 'sales_checkout_page.dart';
+import 'profile_page.dart';
+import 'login_page.dart';
+import 'forgot_password_page.dart';
+import 'change_password_page.dart';
 import 'notification_service.dart';
+import 'inventory_realtime_service.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await Supabase.initialize(
     url: 'https://ebwubdwcksqihxiycdna.supabase.co',
     anonKey: 'sb_publishable_0SXIMX7YlPmkey6HoQ_KYg_L76gdA_X',
+    authOptions: const FlutterAuthClientOptions(
+      authFlowType: AuthFlowType.implicit,
+    ),
   );
   // Initialize OS notifications
   await NotificationService().init();
@@ -21,13 +32,64 @@ Future<void> main() async {
 /// Global accessor for the Supabase client — use throughout the app.
 final supabase = Supabase.instance.client;
 
-class MyApp extends StatelessWidget {
+class MyApp extends StatefulWidget {
   const MyApp({super.key});
+
+  @override
+  State<MyApp> createState() => _MyAppState();
+}
+
+class _MyAppState extends State<MyApp> {
+  final _navigatorKey = GlobalKey<NavigatorState>();
+  bool _isRecoveringPassword = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _setupAuthListener();
+    InventoryRealtimeService().start();
+  }
+
+  void _setupAuthListener() {
+    supabase.auth.onAuthStateChange.listen((data) async {
+      final AuthChangeEvent event = data.event;
+      final Session? session = data.session;
+
+      debugPrint('Supabase Auth Event: $event');
+
+      if (event == AuthChangeEvent.passwordRecovery) {
+        // Recovery harus instan, tanpa nunggu splash
+        while (_navigatorKey.currentState == null) {
+          await Future.delayed(const Duration(milliseconds: 50));
+        }
+        _navigatorKey.currentState?.pushNamedAndRemoveUntil('/change-password', (route) => false);
+        return;
+      }
+
+      // Untuk flow normal (app open/login/logout), beri waktu splash screen
+      if (event == AuthChangeEvent.initialSession || event == AuthChangeEvent.signedIn || event == AuthChangeEvent.signedOut) {
+        // Tunggu sebentar agar animasi splash kelihatan
+        await Future.delayed(const Duration(milliseconds: 2000));
+        
+        // Cek lagi, jika ternyata dalam 2 detik ini ada event passwordRecovery yang masuk, batalkan navigasi normal
+        if (supabase.auth.currentSession == null && event == AuthChangeEvent.initialSession) {
+           _navigatorKey.currentState?.pushNamedAndRemoveUntil('/welcome', (route) => false);
+        } else if (event == AuthChangeEvent.signedIn) {
+          InventoryRealtimeService().start();
+          _navigatorKey.currentState?.pushNamedAndRemoveUntil('/home', (route) => false);
+        } else if (event == AuthChangeEvent.signedOut) {
+          InventoryRealtimeService().stop();
+          _navigatorKey.currentState?.pushNamedAndRemoveUntil('/welcome', (route) => false);
+        }
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'SiKulak',
+      navigatorKey: _navigatorKey,
       debugShowCheckedModeBanner: false,
       scrollBehavior: MyCustomScrollBehavior(),
       theme: ThemeData(
@@ -38,8 +100,15 @@ class MyApp extends StatelessWidget {
       ),
       home: const SplashPage(),
       routes: {
+        '/home': (context) => const HomePage(),
+        '/login': (context) => const LoginPage(),
         '/welcome': (context) => const WelcomePage(),
         '/inventory': (context) => const InventoryPage(),
+        '/pos': (context) => const PosPage(),
+        '/checkout': (context) => const SalesCheckoutPage(),
+        '/profile': (context) => const ProfilePage(),
+        '/forgot-password': (context) => const ForgotPasswordPage(),
+        '/change-password': (context) => const ChangePasswordPage(),
       },
     );
   }

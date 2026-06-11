@@ -1,15 +1,19 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'main.dart';
 import 'models.dart';
 import 'cart_manager.dart';
 import 'inventory_page.dart';
 import 'dashboard_page.dart';
+import 'pos_page.dart';
 import 'widgets/navbar.dart';
+import 'profile_page.dart';
 import 'notification_service.dart';
 import 'product_detail_page.dart';
 import 'product_search_page.dart';
+import 'notification_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -20,7 +24,6 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   // ── State ──────────────────────────────────────────────────
-  final CartManager _cart = CartManager();
   final Set<String> _wishlistItems = {}; // local-only (no BE table)
   String? _selectedCategoryId; // null = "Semua Produk"
   int _selectedNavItem = 0;
@@ -31,49 +34,102 @@ class _HomePageState extends State<HomePage> {
   bool _isLoading = true;
   String? _errorMessage;
   bool _lowStockChecked = false;
+  bool _lowStockDialogShownThisSession = false;
+  StreamSubscription<AuthState>? _authStateSubscription;
 
-  // Promo carousel
-  late final PageController _promoPageController;
-  int _currentPromoPage = 0;
-  Timer? _promoAutoScrollTimer;
+  // Sales Insights
+  int _outOfStockCount = 0;
+  int _lowStockCount = 0;
+  int _itemsSoldCount = 0;
+  double _totalProfit = 0.0;
+  bool _isProfitVisible = true;
+  List<Map<String, dynamic>> _allTransactions = [];
+  String _selectedPeriod = 'Hari';
 
-  // Static promo data (no is_promo field in DB)
-  final List<Map<String, String>> _promoData = const [
-    {
-      'title': 'Harga Sabun sedang\nturun sebanyak 30%',
-      'subtitle': 'Tawaran terbatas. Beli sekarang.',
-    },
-    {
-      'title': 'Diskon Detergen\nhingga 25%!',
-      'subtitle': 'Stok terbatas, jangan lewatkan.',
-    },
-    {
-      'title': 'Promo Shampoo\nbeli 2 gratis 1',
-      'subtitle': 'Berlaku untuk semua merek.',
-    },
-    {
-      'title': 'Minyak Goreng Hemat\ndiskon khusus hari ini',
-      'subtitle': 'Maksimal pembelian 2 pcs.',
-    },
-    {
-      'title': 'Bumbu Dapur Lengkap\nharga mulai Rp 1.000',
-      'subtitle': 'Segar setiap hari langsung kirim.',
-    },
-  ];
+
 
   // ── Lifecycle ──────────────────────────────────────────────
   @override
   void initState() {
     super.initState();
-    _promoPageController = PageController(viewportFraction: 1.0);
     _loadData();
+    _authStateSubscription = supabase.auth.onAuthStateChange.listen((data) {
+      if (!mounted) return;
+      setState(() {});
+    });
   }
 
   @override
   void dispose() {
-    _promoPageController.dispose();
-    _promoAutoScrollTimer?.cancel();
+    _authStateSubscription?.cancel();
     super.dispose();
+  }
+
+  Stream<List<Map<String, dynamic>>> _notificationStream() {
+    final userId = supabase.auth.currentUser?.id ?? supabase.auth.currentSession?.user.id;
+    if (userId == null) return const Stream.empty();
+    return supabase
+        .from('notifications')
+        .stream(primaryKey: ['id'])
+        .eq('user_id', userId);
+  }
+
+  Widget _buildNotificationBadgeIcon() {
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: _notificationStream(),
+      builder: (context, snapshot) {
+        final data = snapshot.data ?? const [];
+        final count = data.where((row) => row['is_read'] == false).length;
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            _HeaderIcon(
+              icon: Icons.notifications_none_outlined,
+              onTap: () async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => NotificationPage(
+                      onNotificationsMarkedRead: () {},
+                    ),
+                  ),
+                );
+              },
+            ),
+            if (count > 0)
+              Positioned(
+                right: -1,
+                top: -1,
+                child: Container(
+                  constraints: const BoxConstraints(minWidth: 16, minHeight: 16),
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEF4444),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: Colors.white, width: 1.2),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.16),
+                        blurRadius: 6,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Text(
+                    count > 99 ? '99+' : '$count',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 9,
+                      fontWeight: FontWeight.bold,
+                      height: 1,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
   }
 
   Future<void> _checkAndInitializeInventory() async {
@@ -97,6 +153,20 @@ class _HomePageState extends State<HomePage> {
         // Insert each product into inventories
         for (final p in list) {
           final price = (p['price'] as num?)?.toDouble() ?? 10000.0;
+          
+          String catName = '';
+          final catObj = p['category'] ?? p['categories'];
+          if (catObj is String) {
+            catName = catObj;
+          } else if (catObj is Map) {
+            catName = (catObj['name'] ?? catObj['nama'] ?? '').toString();
+          } else if (catObj is List && catObj.isNotEmpty) {
+            final first = catObj.first;
+            if (first is Map) {
+              catName = (first['name'] ?? first['nama'] ?? '').toString();
+            }
+          }
+
           await supabase.from('inventories').insert({
             'user_id': userId,
             'name': p['name'],
@@ -104,12 +174,69 @@ class _HomePageState extends State<HomePage> {
             'capital_price': price * 0.90,
             'selling_price': price,
             'exp_date': null,
+            'image_url': p['image_url'],
+            'brand': p['brand'],
+            'rating': p['rating'],
+            'lead_time': p['lead_time'],
+            'category_id': p['category_id'],
+            'category_name': catName.isNotEmpty ? catName : (p['category_name'] ?? ''),
           });
         }
         debugPrint('[SiKulak] Inventory initialization complete.');
+      } else {
+        // Heal existing inventories if image_url or category_name is null
+        final unhealed = await supabase
+            .from('inventories')
+            .select('id, name, image_url')
+            .eq('user_id', userId);
+        
+        final listUnhealed = unhealed as List;
+        final needsHealing = listUnhealed.any((item) => item['image_url'] == null);
+        if (needsHealing) {
+          debugPrint('[SiKulak] Found inventories with null image_url. Healing from products catalog...');
+          final globalProducts = await supabase.from('products').select();
+          final Map<String, Map<String, dynamic>> prodMap = {};
+          for (final p in globalProducts as List) {
+            final name = (p['name'] ?? '') as String;
+            if (name.isNotEmpty) {
+              prodMap[name] = p;
+            }
+          }
+          
+          for (final item in listUnhealed) {
+            if (item['image_url'] == null) {
+              final name = (item['name'] ?? '') as String;
+              final p = prodMap[name];
+              if (p != null) {
+                String catName = '';
+                final catObj = p['category'] ?? p['categories'];
+                if (catObj is String) {
+                  catName = catObj;
+                } else if (catObj is Map) {
+                  catName = (catObj['name'] ?? catObj['nama'] ?? '').toString();
+                } else if (catObj is List && catObj.isNotEmpty) {
+                  final first = catObj.first;
+                  if (first is Map) {
+                    catName = (first['name'] ?? first['nama'] ?? '').toString();
+                  }
+                }
+                
+                await supabase.from('inventories').update({
+                  'image_url': p['image_url'],
+                  'brand': p['brand'],
+                  'rating': p['rating'],
+                  'lead_time': p['lead_time'],
+                  'category_id': p['category_id'],
+                  'category_name': catName.isNotEmpty ? catName : (p['category_name'] ?? ''),
+                }).eq('id', item['id']);
+              }
+            }
+          }
+          debugPrint('[SiKulak] Inventory healing complete.');
+        }
       }
     } catch (e) {
-      debugPrint('[SiKulak] Error initializing inventory: $e');
+      debugPrint('[SiKulak] Error initializing/healing inventory: $e');
     }
   }
 
@@ -119,8 +246,8 @@ class _HomePageState extends State<HomePage> {
     // Run independently so one failure doesn't block the others
     _fetchProfile();
     _fetchCategories();
+    _fetchSalesInsights();
     await _fetchProducts();
-    _startPromoAutoScroll();
     if (!_lowStockChecked) {
       _lowStockChecked = true;
       _checkLowStock();
@@ -138,22 +265,35 @@ class _HomePageState extends State<HomePage> {
 
       final data = await supabase
           .from('profiles')
-          .select('full_name')
+          .select('full_name, avatar_url, updated_at')
           .eq('id', userId)
           .maybeSingle();
 
       if (!mounted) return;
-      if (data != null && data['full_name'] != null) {
-        final raw = data['full_name'].toString();
+      if (data != null) {
+        final raw = (data['full_name'] ?? '').toString();
         setState(() {
-          _userName = raw.length > 12 ? '${raw.substring(0, 12)}...' : raw;
+          if (raw.isNotEmpty) {
+            _userName = raw.length > 12 ? '${raw.substring(0, 12)}...' : raw;
+          }
         });
       } else {
         _setUserNameFromAuth();
       }
-    } catch (_) {
+    } catch (e, stack) {
+      debugPrint('[SiKulak] Error in _fetchProfile: $e\n$stack');
       _setUserNameFromAuth();
     }
+  }
+
+  Stream<UserProfile?> _profileStream() {
+    final userId = supabase.auth.currentUser?.id;
+    if (userId == null) return const Stream.empty();
+    return supabase
+        .from('profiles')
+        .stream(primaryKey: ['id'])
+        .eq('id', userId)
+        .map((data) => data.isNotEmpty ? UserProfile.fromJson(data.first) : null);
   }
 
   void _setUserNameFromAuth() {
@@ -228,19 +368,120 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
-  // ── Promo carousel ─────────────────────────────────────────
-  void _startPromoAutoScroll() {
-    _promoAutoScrollTimer?.cancel();
-    _promoAutoScrollTimer = Timer.periodic(const Duration(seconds: 4), (_) {
-      if (!mounted || !_promoPageController.hasClients) return;
-      final next = (_currentPromoPage + 1) % _promoData.length;
-      _promoPageController.animateToPage(
-        next,
-        duration: const Duration(milliseconds: 400),
-        curve: Curves.easeInOut,
-      );
-    });
+  Future<void> _fetchSalesInsights() async {
+    try {
+      final user = supabase.auth.currentUser;
+      if (user == null) return;
+      final userId = user.id;
+
+      // 1. Fetch inventories for out-of-stock and low stock
+      final inventoriesResponse = await supabase
+          .from('inventories')
+          .select('qty_available')
+          .eq('user_id', userId);
+
+      final invList = inventoriesResponse as List;
+      int outOfStock = 0;
+      int lowStock = 0;
+      for (final item in invList) {
+        final stock = (item['qty_available'] as num?)?.toInt() ?? 0;
+        if (stock == 0) {
+          outOfStock++;
+        } else if (stock <= 5) {
+          lowStock++;
+        }
+      }
+
+      // 2. Fetch transactions & transaction items for items sold and profit
+      final transactionsResponse = await supabase
+          .from('pos_orders')
+          .select('total_profit, created_at, pos_order_items(qty, price_at_sale, profit_at_sale, inventories(capital_price))')
+          .eq('user_id', userId);
+
+      final txList = (transactionsResponse as List?)?.cast<Map<String, dynamic>>() ?? [];
+
+      if (mounted) {
+        setState(() {
+          _outOfStockCount = outOfStock;
+          _lowStockCount = lowStock;
+          _allTransactions = txList;
+          _updateInsightsForPeriod();
+        });
+      }
+    } catch (e) {
+      debugPrint('[SiKulak] Error fetching sales insights: $e');
+    }
   }
+
+  void _updateInsightsForPeriod() {
+    double totalProfit = 0.0;
+    int itemsSold = 0;
+    final now = DateTime.now();
+
+    for (final tx in _allTransactions) {
+      final txCreatedAt = tx['created_at'];
+      if (txCreatedAt == null) continue;
+      final txDate = DateTime.tryParse(txCreatedAt.toString())?.toLocal();
+      if (txDate == null) continue;
+
+      bool match = false;
+      if (_selectedPeriod == 'Hari') {
+        match = txDate.year == now.year && txDate.month == now.month && txDate.day == now.day;
+      } else if (_selectedPeriod == 'Bulan') {
+        match = txDate.year == now.year && txDate.month == now.month;
+      } else if (_selectedPeriod == 'Tahun') {
+        match = txDate.year == now.year;
+      }
+
+      if (match) {
+        double txProfit = 0.0;
+        final items = tx['pos_order_items'] as List? ?? [];
+        for (final item in items) {
+          final qty = (item['qty'] as num?)?.toInt() ?? 0;
+          final price = (item['price_at_sale'] as num?)?.toDouble() ?? 0.0;
+          final inv = item['inventories'] as Map<String, dynamic>?;
+          final capital = (inv?['capital_price'] as num?)?.toDouble() ??
+                          (item['profit_at_sale'] != null ? (price - (item['profit_at_sale'] as num).toDouble()) : (price * 0.90));
+          txProfit += (price - capital) * qty;
+          itemsSold += qty;
+        }
+        totalProfit += txProfit;
+      }
+    }
+
+    _totalProfit = totalProfit;
+    _itemsSoldCount = itemsSold;
+  }
+
+  Widget _buildPeriodButton(String period) {
+    final isSelected = _selectedPeriod == period;
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedPeriod = period;
+          _updateInsightsForPeriod();
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? const Color(0xFF2979FF) : Colors.transparent,
+          borderRadius: BorderRadius.circular(18),
+        ),
+        child: Text(
+          period,
+          style: TextStyle(
+            color: isSelected ? Colors.white : Colors.grey[600],
+            fontSize: 12,
+            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+      ),
+    );
+  }
+
+
 
   // ── Filtered products ──────────────────────────────────────
   List<Product> get _filteredProducts {
@@ -257,137 +498,117 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  Future<bool> _shouldInsertNotification({
+    required String userId,
+    required InventoryItem item,
+    required String notifType,
+  }) async {
+    final lastNotif = await supabase
+        .from('notifications')
+        .select('type, created_at')
+        .eq('user_id', userId)
+        .eq('related_inventory_id', item.id)
+        .order('created_at', ascending: false)
+        .limit(1)
+        .maybeSingle();
+
+    if (lastNotif == null) return true;
+
+    final lastType = lastNotif['type']?.toString();
+    final lastCreatedAt = DateTime.tryParse(lastNotif['created_at']?.toString() ?? '');
+
+    if (lastType != notifType) return true;
+
+    if (item.updatedAt != null && lastCreatedAt != null) {
+      return item.updatedAt!.isAfter(lastCreatedAt);
+    }
+
+    return false;
+  }
+
 // ── Low stock check (from inventories table) ───────────────
   Future<void> _checkLowStock() async {
     try {
       final userId = supabase.auth.currentUser?.id;
       if (userId == null) return;
 
-      // Fetch items with qty_available <= 5 (including stock = 0)
+      // Fetch items with qty_available <= 10 from the database.
       final data = await supabase
           .from('inventories')
           .select()
           .eq('user_id', userId)
-          .lte('qty_available', 5);
+          .lte('qty_available', 10)
+          .order('qty_available', ascending: true);
 
       if (!mounted) return;
-      final items =
-          (data as List).map((j) => InventoryItem.fromJson(j)).toList();
+
+      final items = (data as List)
+          .map((j) => InventoryItem.fromJson(j))
+          .toList()
+        ..sort((a, b) {
+          final aOut = a.qtyAvailable == 0;
+          final bOut = b.qtyAvailable == 0;
+          if (aOut != bOut) {
+            return aOut ? -1 : 1;
+          }
+          return a.qtyAvailable.compareTo(b.qtyAvailable);
+        });
+
       if (items.isNotEmpty) {
-        // Fire OS push notifications for ALL low-stock items
-        for (final item in items) {
-          NotificationService().showLowStockNotification(
-            itemName: item.name,
-            qty: item.qtyAvailable,
-          );
+        final List<InventoryItem> notifiedItems = [];
+        try {
+          for (final item in items) {
+            final notifTitle = item.qtyAvailable == 0
+                ? 'Stock ${item.name} Habis'
+                : 'Stock ${item.name} Rendah';
+            final notifBody = item.qtyAvailable == 0
+                ? 'Segera tambah stock ${item.name} (stok habis)'
+                : 'Segera tambah stock ${item.name}';
+            final notifType = item.qtyAvailable == 0 ? 'out_of_stock' : 'low_stock';
+            final shouldInsert = await _shouldInsertNotification(
+              userId: userId,
+              item: item,
+              notifType: notifType,
+            );
+            if (!shouldInsert) continue;
+
+            await supabase.from('notifications').insert({
+              'user_id': userId,
+              'title': notifTitle,
+              'body': notifBody,
+              'type': notifType,
+              'related_inventory_id': item.id,
+              'is_read': false,
+              'created_at': DateTime.now().toUtc().toIso8601String(),
+            });
+            notifiedItems.add(item);
+          }
+        } catch (e) {
+          debugPrint('[ERROR] _checkLowStock insert notification: $e');
         }
 
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _showLowStockDialog(items);
-        });
-      }
-    } catch (_) {}
-  }
+        if (notifiedItems.isNotEmpty) {
+          for (final item in notifiedItems) {
+            NotificationService().showLowStockNotification(
+              itemName: item.name,
+              qty: item.qtyAvailable,
+            );
+          }
+        }
 
-  // ── Checkout Cart ──────────────────────────────────────────
-  Future<void> _checkoutCart(BuildContext context) async {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => const Center(child: CircularProgressIndicator()),
-    );
-
-    try {
-      final user = supabase.auth.currentUser;
-      if (user == null) throw Exception('User tidak terautentikasi.');
-      final userId = user.id;
-      final totalPrice = _cart.totalPrice;
-      final totalProfit = totalPrice * 0.10; // 10% profit margin
-
-      // 1. Create transaction in DB
-      final transactionResponse = await supabase.from('transactions').insert({
-        'user_id': userId,
-        'total_price': totalPrice,
-        'total_profit': totalProfit,
-        'status': 'completed',
-      }).select().single();
-
-      final transactionId = transactionResponse['id'];
-
-      // 2. Insert transaction items and update stock for each item
-      for (final entry in _cart.items.entries) {
-        final productIdStr = entry.key;
-        final cartItem = entry.value;
-        final productId = productIdStr;
-
-        // Insert item details
-        await supabase.from('transaction_items').insert({
-          'transaction_id': transactionId,
-          'product_id': productId,
-          'quantity': cartItem.quantity,
-          'price_at_purchase': cartItem.price,
-          'profit_at_purchase': cartItem.price * 0.10,
-        });
-
-        // Fetch current stock to subtract from user's inventories
-        final invData = await supabase
-            .from('inventories')
-            .select('id, qty_available')
-            .eq('user_id', userId)
-            .or('id.eq.$productId,name.eq.${cartItem.productName}')
-            .maybeSingle();
-        if (invData != null) {
-          final invId = invData['id'];
-          final currentQty = (invData['qty_available'] as num?)?.toInt() ?? 0;
-          final newQty = (currentQty - cartItem.quantity).clamp(0, 999999);
-          await supabase
-              .from('inventories')
-              .update({'qty_available': newQty})
-              .eq('id', invId);
+        if (!_lowStockDialogShownThisSession) {
+          _lowStockDialogShownThisSession = true;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _showLowStockDialog(items);
+          });
         }
       }
-
-      // 3. Clear cart and reload
-      _cart.clear();
-      _loadData();
-
-      if (!context.mounted) return;
-      Navigator.pop(context); // Dismiss spinner
-      Navigator.pop(context); // Dismiss cart modal
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text('Pembayaran berhasil! Transaksi disimpan ke database.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: Colors.white)),
-          backgroundColor: Colors.green.shade900.withValues(alpha: 0.8),
-          elevation: 0,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(30)),
-          margin: const EdgeInsets.only(bottom: 95, left: 40, right: 40),
-          duration: const Duration(seconds: 3),
-        ),
-      );
     } catch (e) {
-      if (!context.mounted) return;
-      Navigator.pop(context); // Dismiss spinner
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Gagal melakukan checkout: $e',
-              textAlign: TextAlign.center,
-              style: const TextStyle(fontSize: 12, color: Colors.white)),
-          backgroundColor: Colors.red.shade900.withValues(alpha: 0.8),
-          elevation: 0,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(30)),
-          margin: const EdgeInsets.only(bottom: 95, left: 40, right: 40),
-          duration: const Duration(seconds: 3),
-        ),
-      );
+      debugPrint('[ERROR] _checkLowStock: $e');
     }
   }
+
+
 
   // ── Low Stock Dialog ───────────────────────────────────────
   void _showLowStockDialog(List<InventoryItem> items) {
@@ -420,6 +641,9 @@ class _HomePageState extends State<HomePage> {
                   itemBuilder: (_, index) {
                     final item = items[index];
                     final isOut = item.qtyAvailable == 0;
+                    final label = isOut ? 'Habis' : 'Stok Menipis';
+                    final labelColor = isOut ? Colors.red[700] : Colors.orange[800];
+                    final labelBg = isOut ? Colors.red[100] : Colors.orange[100];
                     return Row(
                       children: [
                         // Product image from DB or fallback icon
@@ -462,19 +686,15 @@ class _HomePageState extends State<HomePage> {
                                     padding: const EdgeInsets.symmetric(
                                         horizontal: 8, vertical: 3),
                                     decoration: BoxDecoration(
-                                      color: isOut
-                                          ? Colors.red[100]
-                                          : Colors.orange[100],
+                                      color: labelBg,
                                       borderRadius: BorderRadius.circular(6),
                                     ),
                                     child: Text(
-                                      '${item.qtyAvailable} Sachet',
+                                      label,
                                       style: TextStyle(
                                         fontSize: 11,
                                         fontWeight: FontWeight.w600,
-                                        color: isOut
-                                            ? Colors.red[700]
-                                            : Colors.orange[800],
+                                        color: labelColor,
                                       ),
                                     ),
                                   ),
@@ -487,6 +707,14 @@ class _HomePageState extends State<HomePage> {
                                     color: isOut ? Colors.red : Colors.orange,
                                   ),
                                 ],
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                '${item.qtyAvailable} Sachet tersisa',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.grey[600],
+                                ),
                               ),
                             ],
                           ),
@@ -541,194 +769,95 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-  // ── Cart Modal ─────────────────────────────────────────────
-  void _showCartModal(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.only(
-          topLeft: Radius.circular(20),
-          topRight: Radius.circular(20),
-        ),
-      ),
-      builder: (context) => StatefulBuilder(
-        builder: (context, setModalState) => DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: 0.6,
-          minChildSize: 0.4,
-          maxChildSize: 0.9,
-          builder: (context, scrollController) {
-            final entries = _cart.items.entries.toList();
-            return Container(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Keranjang Belanja',
-                          style: TextStyle(
-                              fontSize: 18, fontWeight: FontWeight.bold)),
-                      GestureDetector(
-                          onTap: () => Navigator.pop(context),
-                          child: const Icon(Icons.close)),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  if (_cart.isEmpty)
-                    const Center(
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(vertical: 40),
-                        child: Text('Keranjang kosong',
-                            style: TextStyle(color: Colors.grey)),
-                      ),
-                    )
-                  else
-                    Expanded(
-                      child: ListView.builder(
-                        controller: scrollController,
-                        itemCount: entries.length,
-                        itemBuilder: (context, index) {
-                          final productId = entries[index].key;
-                          final entry = entries[index].value;
-                          return Padding(
-                            padding: const EdgeInsets.symmetric(vertical: 8),
-                            child: Row(
-                              children: [
-                                Container(
-                                  width: 60,
-                                  height: 60,
-                                  decoration: BoxDecoration(
-                                    color: Colors.grey[200],
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  clipBehavior: Clip.antiAlias,
-                                  child: entry.imageUrl != null &&
-                                          entry.imageUrl!.isNotEmpty
-                                      ? Image.network(entry.imageUrl!,
-                                          fit: BoxFit.cover,
-                                          errorBuilder: (_, __, ___) =>
-                                              Icon(Icons.image,
-                                                  color: Colors.grey[300]))
-                                      : Icon(Icons.image,
-                                          color: Colors.grey[300]),
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(entry.productName,
-                                          style: const TextStyle(
-                                              fontWeight: FontWeight.bold)),
-                                      Text(
-                                          CartManager.formatPrice(entry.price),
-                                          style: const TextStyle(
-                                              color: Colors.grey)),
-                                    ],
-                                  ),
-                                ),
-                                Container(
-                                  decoration: BoxDecoration(
-                                    border: Border.all(color: Colors.blue),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      IconButton(
-                                        onPressed: () {
-                                          _cart.remove(productId);
-                                          setModalState(() {});
-                                          setState(() {});
-                                        },
-                                        icon: const Icon(
-                                            Icons.remove_circle_outline,
-                                            size: 18,
-                                            color: Colors.blue),
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(),
-                                      ),
-                                      Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                            horizontal: 8),
-                                        child: Text(
-                                            entry.quantity.toString(),
-                                            style: const TextStyle(
-                                                fontWeight: FontWeight.bold)),
-                                      ),
-                                      IconButton(
-                                        onPressed: () {
-                                          _cart.add(productId,
-                                              name: entry.productName,
-                                              price: entry.price,
-                                              imageUrl: entry.imageUrl);
-                                          setModalState(() {});
-                                          setState(() {});
-                                        },
-                                        icon: const Icon(
-                                            Icons.add_circle_outline,
-                                            size: 18,
-                                            color: Colors.blue),
-                                        padding: EdgeInsets.zero,
-                                        constraints: const BoxConstraints(),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  const SizedBox(height: 16),
-                  Container(
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [Colors.blue[400]!, Colors.blue[600]!],
-                      ),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 16),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text('Total: ${_cart.totalItems} items',
-                                style: const TextStyle(
-                                    color: Colors.white, fontSize: 12)),
-                            Text(_cart.formattedTotalPrice,
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 16)),
-                          ],
-                        ),
-                        ElevatedButton.icon(
-                          onPressed: () => _checkoutCart(context),
-                          icon: const Icon(Icons.payment),
-                          label: const Text('Lanjut'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: Colors.blue,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-      ),
-    );
+
+
+  void _handleTabSelection(int index) {
+    if (index == _selectedNavItem) return;
+    if (index == 0) {
+      if (mounted) {
+        setState(() {
+          _selectedNavItem = 0;
+        });
+        _fetchProfile();
+        _fetchSalesInsights();
+      }
+    } else if (index == 1) {
+      setState(() => _selectedNavItem = 1);
+      Navigator.of(context)
+          .push(PageRouteBuilder(
+            pageBuilder: (_, __, ___) => const InventoryPage(),
+            transitionDuration: Duration.zero,
+            reverseTransitionDuration: Duration.zero,
+          ))
+          .then((result) {
+        if (mounted) {
+          if (result is int) {
+            _handleTabSelection(result);
+          } else {
+            setState(() => _selectedNavItem = 0);
+            _fetchProfile();
+            _fetchSalesInsights();
+          }
+        }
+      });
+    } else if (index == 3) {
+      setState(() => _selectedNavItem = 3);
+      Navigator.of(context)
+          .push(PageRouteBuilder(
+            pageBuilder: (_, __, ___) => const DashboardPage(),
+            transitionDuration: Duration.zero,
+            reverseTransitionDuration: Duration.zero,
+          ))
+          .then((result) {
+        if (mounted) {
+          if (result is int) {
+            _handleTabSelection(result);
+          } else {
+            setState(() => _selectedNavItem = 0);
+            _fetchProfile();
+            _fetchSalesInsights();
+          }
+        }
+      });
+    } else if (index == 2) {
+      setState(() => _selectedNavItem = 2);
+      Navigator.of(context)
+          .push(PageRouteBuilder(
+            pageBuilder: (_, __, ___) => const PosPage(),
+            transitionDuration: Duration.zero,
+            reverseTransitionDuration: Duration.zero,
+          ))
+          .then((result) {
+        if (mounted) {
+          if (result is int) {
+            _handleTabSelection(result);
+          } else {
+            setState(() => _selectedNavItem = 0);
+            _fetchProfile();
+            _fetchSalesInsights();
+          }
+        }
+      });
+    } else if (index == 4) {
+      setState(() => _selectedNavItem = 4);
+      Navigator.of(context)
+          .push(PageRouteBuilder(
+            pageBuilder: (_, __, ___) => const ProfilePage(),
+            transitionDuration: Duration.zero,
+            reverseTransitionDuration: Duration.zero,
+          ))
+          .then((result) {
+        if (mounted) {
+          if (result is int) {
+            _handleTabSelection(result);
+          } else {
+            setState(() => _selectedNavItem = 0);
+            _fetchProfile();
+            _fetchSalesInsights();
+          }
+        }
+      });
+    }
   }
 
   // ── BUILD ──────────────────────────────────────────────────
@@ -749,60 +878,78 @@ class _HomePageState extends State<HomePage> {
             pinned: true,
             toolbarHeight: 140,
             automaticallyImplyLeading: false,
-            flexibleSpace: ClipRRect(
-              borderRadius: const BorderRadius.vertical(
-                  bottom: Radius.circular(20)),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                child: Container(
-                  color:
-                      const Color(0xFF2979FF).withValues(alpha: 0.8),
-                  padding: const EdgeInsets.only(
-                      top: 55, left: 20, right: 20, bottom: 20),
+            titleSpacing: 0,
+            title: StreamBuilder<UserProfile?>(
+              stream: _profileStream(),
+              builder: (context, snapshot) {
+                final profile = snapshot.data;
+                final userName = profile?.fullName ?? _userName;
+                final avatarUrl = profile?.avatarUrl;
+
+                return Container(
+                  padding: const EdgeInsets.only(top: 15, left: 20, right: 20),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Expanded(
                         child: SizedBox(
                           height: 56,
-                          child: _GlassContainer(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 14),
-                            borderRadius: BorderRadius.circular(30),
-                            child: Row(
-                              children: [
-                                const CircleAvatar(
-                                  radius: 18,
-                                  backgroundColor: Colors.white24,
-                                  child: Icon(Icons.person,
-                                      color: Colors.white, size: 22),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.center,
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Text('Selamat datang,',
-                                          style: TextStyle(
-                                              color: Colors.white70,
-                                              fontSize: 11)),
-                                      const SizedBox(height: 1),
-                                      Text(_userName,
-                                          style: const TextStyle(
-                                              color: Colors.white,
-                                              fontWeight: FontWeight.bold,
-                                              fontSize: 14),
-                                          maxLines: 1,
-                                          overflow:
-                                              TextOverflow.ellipsis),
-                                    ],
+                          child: GestureDetector(
+                            onTap: () => _handleTabSelection(4),
+                            child: _GlassContainer(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 14),
+                              borderRadius: BorderRadius.circular(30),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    width: 36,
+                                    height: 36,
+                                    decoration: const BoxDecoration(
+                                      shape: BoxShape.circle,
+                                      color: Colors.white24,
+                                    ),
+                                    child: avatarUrl != null && avatarUrl.isNotEmpty
+                                        ? ClipOval(
+                                            child: Image.network(
+                                              '$avatarUrl?t=${profile?.updatedAt.millisecondsSinceEpoch ?? DateTime.now().millisecondsSinceEpoch}',
+                                              fit: BoxFit.cover,
+                                              errorBuilder: (context, error, stackTrace) {
+                                                return const Icon(Icons.person,
+                                                    color: Colors.white, size: 22);
+                                              },
+                                            ),
+                                          )
+                                        : const Icon(Icons.person,
+                                            color: Colors.white, size: 22),
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(width: 10),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      mainAxisAlignment:
+                                          MainAxisAlignment.center,
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        const Text('Selamat datang,',
+                                            style: TextStyle(
+                                                color: Colors.white70,
+                                                fontSize: 11)),
+                                        const SizedBox(height: 1),
+                                        Text(userName,
+                                            style: const TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.bold,
+                                                fontSize: 14),
+                                            maxLines: 1,
+                                            overflow:
+                                                TextOverflow.ellipsis),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -811,13 +958,21 @@ class _HomePageState extends State<HomePage> {
                       SizedBox(
                         width: 56,
                         height: 56,
-                        child: _HeaderIcon(
-                          icon: Icons.notifications_none_outlined,
-                          onTap: () {},
-                        ),
+                        child: _buildNotificationBadgeIcon(),
                       ),
                     ],
                   ),
+                );
+              }
+            ),
+            flexibleSpace: ClipRRect(
+              borderRadius: const BorderRadius.vertical(
+                  bottom: Radius.circular(20)),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+                child: Container(
+                  color:
+                      const Color(0xFF2979FF).withValues(alpha: 0.8),
                 ),
               ),
             ),
@@ -901,94 +1056,159 @@ class _HomePageState extends State<HomePage> {
             ),
           ),
 
-          // ─────────── PROMO BANNER CAROUSEL ───────────
+          // ─────────── SALES ACTIVITY SECTION ───────────
           SliverToBoxAdapter(
-            child: Column(
-              children: [
-                SizedBox(
-                  height: 180,
-                  child: PageView.builder(
-                    controller: _promoPageController,
-                    onPageChanged: (p) =>
-                        setState(() => _currentPromoPage = p),
-                    itemCount: _promoData.length,
-                    itemBuilder: (_, index) {
-                      final promo = _promoData[index];
-                      return Container(
-                        margin: const EdgeInsets.symmetric(
-                            horizontal: 20),
-                        padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [
-                              Color(0xFF1E3A8A),
-                              Color(0xFF3B82F6)
-                            ],
-                          ),
-                          borderRadius: BorderRadius.circular(20),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Sales Activity',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF2979FF),
                         ),
-                        child: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment.start,
-                          mainAxisAlignment:
-                              MainAxisAlignment.center,
-                          children: [
-                            Text(promo['title']!,
-                                style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 18,
-                                    fontWeight: FontWeight.bold)),
-                            const SizedBox(height: 8),
-                            Text(promo['subtitle']!,
-                                style: const TextStyle(
-                                    color: Colors.white70)),
-                            const SizedBox(height: 15),
-                            ElevatedButton(
-                              onPressed: () {
-                                Navigator.of(context)
-                                    .push(MaterialPageRoute(
-                                        builder: (_) =>
-                                            const InventoryPage()))
-                                    .then((_) => setState(() {}));
-                              },
-                              style: ElevatedButton.styleFrom(
-                                  backgroundColor: const Color(0xFF1A1A2E),
-                                  foregroundColor: Colors.white,
-                                  elevation: 0,
-                                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  )),
-                              child: const Text('Beli Sekarang',
-                                  style: TextStyle(fontWeight: FontWeight.w600)),
+                      ),
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.05),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
                             ),
                           ],
                         ),
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(
-                    _promoData.length,
-                    (i) => AnimatedContainer(
-                      duration: const Duration(milliseconds: 300),
-                      margin:
-                          const EdgeInsets.symmetric(horizontal: 4),
-                      width: _currentPromoPage == i ? 24 : 8,
-                      height: 8,
-                      decoration: BoxDecoration(
-                        color: _currentPromoPage == i
-                            ? const Color(0xFF2979FF)
-                            : Colors.grey[300],
-                        borderRadius: BorderRadius.circular(4),
+                        padding: const EdgeInsets.all(2),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _buildPeriodButton('Hari'),
+                            _buildPeriodButton('Bulan'),
+                            _buildPeriodButton('Tahun'),
+                          ],
+                        ),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // Total Keuntungan Card
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        colors: [Color(0xFF0D3365), Color(0xFF2979FF)],
+                        begin: Alignment.bottomLeft,
+                        end: Alignment.topRight,
+                      ),
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.1),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _selectedPeriod == 'Hari'
+                                    ? 'Keuntungan Hari Ini'
+                                    : _selectedPeriod == 'Bulan'
+                                        ? 'Keuntungan Bulan Ini'
+                                        : 'Keuntungan Tahun Ini',
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              FittedBox(
+                                fit: BoxFit.scaleDown,
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  _isProfitVisible
+                                      ? '${CartManager.formatPrice(_totalProfit)},00'
+                                      : 'Rp. ••••••',
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.bold,
+                                    letterSpacing: 0.5,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: Icon(
+                            _isProfitVisible
+                                ? Icons.visibility_outlined
+                                : Icons.visibility_off_outlined,
+                            color: Colors.white,
+                            size: 26,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              _isProfitVisible = !_isProfitVisible;
+                            });
+                          },
+                        ),
+                      ],
                     ),
                   ),
-                ),
-              ],
+                  const SizedBox(height: 12),
+                  
+                  // 3 Small Cards Row
+                  Row(
+                    children: [
+                      // Out of Stock Card
+                      Expanded(
+                        child: _buildInsightCard(
+                          title: 'Out of Stock',
+                          titleColor: const Color(0xFFFF5252),
+                          value: '$_outOfStockCount',
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Item Sold Card
+                      Expanded(
+                        child: _buildInsightCard(
+                          title: 'Item Sold',
+                          titleColor: Colors.white,
+                          value: '$_itemsSoldCount',
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      // Low Stock Card
+                      Expanded(
+                        child: _buildInsightCard(
+                          title: 'Low Stock',
+                          titleColor: const Color(0xFFFFD54F),
+                          value: '$_lowStockCount',
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
 
@@ -1106,42 +1326,75 @@ class _HomePageState extends State<HomePage> {
       // ─────────── NAVBAR ───────────
       bottomNavigationBar: CustomNavBar(
         selectedIndex: _selectedNavItem,
-        onItemTapped: (index) {
-          if (index == _selectedNavItem) return;
-          if (index == 1) {
-            // Inventory/Search tab
-            setState(() => _selectedNavItem = 1);
-            Navigator.of(context)
-                .push(PageRouteBuilder(
-                  pageBuilder: (_, __, ___) =>
-                      const InventoryPage(),
-                  transitionDuration: Duration.zero,
-                  reverseTransitionDuration: Duration.zero,
-                ))
-                .then((_) {
-              if (mounted) setState(() => _selectedNavItem = 0);
-            });
-          } else if (index == 3) {
-            // Dashboard/Analytics tab
-            setState(() => _selectedNavItem = 3);
-            Navigator.of(context)
-                .push(PageRouteBuilder(
-                  pageBuilder: (_, __, ___) =>
-                      const DashboardPage(),
-                  transitionDuration: Duration.zero,
-                  reverseTransitionDuration: Duration.zero,
-                ))
-                .then((_) {
-              if (mounted) setState(() => _selectedNavItem = 0);
-            });
-          } else if (index == 2) {
-            // Show cart modal
-            _showCartModal(context);
-          } else {
-            // index 4 (Profile) — placeholder
-            setState(() => _selectedNavItem = index);
-          }
-        },
+        onItemTapped: _handleTabSelection,
+      ),
+    );
+  }
+
+  Widget _buildInsightCard({
+    required String title,
+    required Color titleColor,
+    required String value,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF092552), Color(0xFF1976D2)],
+          begin: Alignment.bottomLeft,
+          end: Alignment.topRight,
+        ),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 3),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              color: titleColor,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 8),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.baseline,
+              textBaseline: TextBaseline.alphabetic,
+              children: [
+                Text(
+                  value,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                const Text(
+                  'Qty',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 11,
+                    fontWeight: FontWeight.w400,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
