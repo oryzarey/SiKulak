@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -48,23 +49,12 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
     final email = _emailController.text.trim();
 
     try {
-      // 1. Cek apakah email terdaftar di tabel profiles
-      final existingUser = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('email', email)
-          .maybeSingle();
-
-      if (existingUser == null) {
-        _showError('Email tidak terdaftar.');
-        setState(() => _isLoading = false);
-        return;
-      }
-
-      // 2. Jika ada, kirim instruksi reset password
+      // Kita langsung kirim instruksi reset password. 
+      // Supabase akan menangani secara internal apakah email ada atau tidak.
+      // Jika email ada, instruksi dikirim. Jika tidak, tetap "success" demi keamanan.
       await supabase.auth.resetPasswordForEmail(
         email,
-        redirectTo: 'io.supabase.sikulak://login-callback/',
+        redirectTo: kIsWeb ? null : 'io.supabase.sikulak://login-callback/',
       );
 
       if (!mounted) return;
@@ -76,7 +66,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
       _showError(e.message);
       setState(() => _isLoading = false);
     } catch (e) {
-      _showError('Email tidak ditemukan.');
+      _showError('Terjadi kesalahan saat mengirim instruksi reset.');
       setState(() => _isLoading = false);
     }
   }
