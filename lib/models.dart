@@ -12,6 +12,7 @@ class Product {
   final int reviews;
   final String? imageUrl;
   final int leadTime;
+  final String? abcClass; // ABC Classification (A, B, C)
 
   // Compatibility getters for the existing UI code
   double get supplierPrice => price;
@@ -32,6 +33,7 @@ class Product {
     this.reviews = 0,
     this.imageUrl,
     this.leadTime = 0,
+    this.abcClass,
   });
 
   factory Product.fromJson(Map<String, dynamic> json) {
@@ -61,6 +63,7 @@ class Product {
       reviews: (json['reviews'] as num?)?.toInt() ?? 0,
       imageUrl: json['image_url'] as String?,
       leadTime: (json['lead_time'] as num?)?.toInt() ?? 0,
+      abcClass: json['abc_class'] as String?,
     );
   }
 }
