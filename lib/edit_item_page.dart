@@ -30,6 +30,8 @@ class _EditItemPageState extends State<EditItemPage> {
   late TextEditingController _leadTimeController;
   
   int _quantity = 1;
+  String _satuan = 'pcs';
+  final List<String> _satuanOptions = ['pcs', 'sachet', 'butir', 'kg', 'botol'];
   String? _imageUrl;
   Uint8List? _selectedImageBytes;
   bool _isSaving = false;
@@ -45,6 +47,10 @@ class _EditItemPageState extends State<EditItemPage> {
     _sellingPriceController = TextEditingController(text: widget.product.price.toStringAsFixed(0));
     _capitalPriceController = TextEditingController(text: '0');
     _quantity = widget.product.stock > 0 ? widget.product.stock : 1;
+    _satuan = widget.product.satuan;
+    if (!_satuanOptions.contains(_satuan)) {
+      _satuan = 'pcs';
+    }
     _imageUrl = widget.product.imageUrl;
     _weightController = TextEditingController(text: '');
     _expDateController = TextEditingController(text: '');
@@ -88,6 +94,12 @@ class _EditItemPageState extends State<EditItemPage> {
             }
           }
           _leadTimeController.text = ((response['lead_time'] as num?)?.toInt() ?? widget.product.leadTime).toString();
+          if (response['satuan'] != null) {
+            final dbSatuan = response['satuan'].toString();
+            if (_satuanOptions.contains(dbSatuan)) {
+              _satuan = dbSatuan;
+            }
+          }
         });
       }
     } catch (e) {
@@ -318,6 +330,7 @@ class _EditItemPageState extends State<EditItemPage> {
       final Map<String, dynamic> updateData = {
         'name': name,
         'qty_available': _quantity,
+        'satuan': _satuan,
         'selling_price': sellingPrice,
         'capital_price': capitalPrice,
         'lead_time': leadTime,
@@ -641,6 +654,25 @@ class _EditItemPageState extends State<EditItemPage> {
                                   ),
                                 ),
                               ],
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              value: _satuan,
+                              decoration: _inputDecoration(hint: 'Satuan'),
+                              items: _satuanOptions.map((String value) {
+                                return DropdownMenuItem<String>(
+                                  value: value,
+                                  child: Text(value, style: const TextStyle(fontSize: 13, color: Colors.black87)),
+                                );
+                              }).toList(),
+                              onChanged: (newValue) {
+                                setState(() {
+                                  _satuan = newValue!;
+                                });
+                              },
+                              validator: (value) => value == null ? 'Pilih satuan' : null,
                             ),
                           ),
                         ],

@@ -27,6 +27,8 @@ class _AddItemPageState extends State<AddItemPage> {
   final TextEditingController _leadTimeController = TextEditingController(text: '0');
   
   int _quantity = 1;
+  String _satuan = 'pcs';
+  final List<String> _satuanOptions = ['pcs', 'sachet', 'butir', 'kg', 'botol'];
   String? _imageUrl;
   Uint8List? _selectedImageBytes;
   bool _isSaving = false;
@@ -201,6 +203,7 @@ class _AddItemPageState extends State<AddItemPage> {
         'user_id': userId,
         'name': name,
         'qty_available': _quantity,
+        'satuan': _satuan,
         'selling_price': sellingPrice, // Harga Jual
         'capital_price': capitalPrice, // Harga Beli
         'lead_time': leadTime,
@@ -454,7 +457,7 @@ class _AddItemPageState extends State<AddItemPage> {
                       ),
                       const SizedBox(height: 18),
 
-                      _buildLabel('Jumlah stok *'),
+                      _buildLabel('Jumlah Stok *'),
                       Row(
                         children: [
                           Container(
@@ -477,7 +480,7 @@ class _AddItemPageState extends State<AddItemPage> {
                                 ),
                                 // Editable text field
                                 SizedBox(
-                                  width: 140,
+                                  width: 80,
                                   child: TextFormField(
                                     controller: _quantityController,
                                     keyboardType: TextInputType.number,
@@ -524,6 +527,25 @@ class _AddItemPageState extends State<AddItemPage> {
                                   ),
                                 ),
                               ],
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: DropdownButtonFormField<String>(
+                              value: _satuan,
+                              decoration: _inputDecoration(hint: 'Satuan'),
+                              items: _satuanOptions.map((String value) {
+                                return DropdownMenuItem<String>(
+                                  value: value,
+                                  child: Text(value, style: const TextStyle(fontSize: 13, color: Colors.black87)),
+                                );
+                              }).toList(),
+                              onChanged: (newValue) {
+                                setState(() {
+                                  _satuan = newValue!;
+                                });
+                              },
+                              validator: (value) => value == null ? 'Pilih satuan' : null,
                             ),
                           ),
                         ],

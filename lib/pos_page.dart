@@ -694,9 +694,9 @@ class _PosPageState extends State<PosPage> {
 		return const Color(0xFF16A34A); // Hijau - Aman
 	}
 
-	String _stockLabel(int qty) {
-		if (qty == 0) return '0 Sachet';
-		return '$qty Sachet';
+	String _stockLabel(int qty, String satuan) {
+		if (qty == 0) return '0 $satuan';
+		return '$qty $satuan';
 	}
 
 
@@ -1158,7 +1158,7 @@ class _PosPageState extends State<PosPage> {
 													borderRadius: BorderRadius.circular(8),
 												),
 												child: Text(
-													_stockLabel(item.qtyAvailable),
+													_stockLabel(item.qtyAvailable, item.satuan),
 													style: const TextStyle(fontSize: 11, color: Colors.white, fontWeight: FontWeight.w700),
 												),
 											),
@@ -1566,6 +1566,7 @@ class _PosPageState extends State<PosPage> {
 		final qtyAvailable = item['qty_available'] as int? ?? 0;
 		final totalSold = item['total_sold'] as int? ?? 0;
 		final leadTime = item['lead_time'] as int? ?? 0;
+		final satuan = item['satuan'] as String? ?? 'pcs';
 		final hasImage = (imageUrl ?? '').trim().isNotEmpty;
 
 		final Color rankColor = switch (rank) {
@@ -1680,7 +1681,7 @@ class _PosPageState extends State<PosPage> {
 										Icon(Icons.inventory_2_outlined, size: 12, color: getStockColor(qtyAvailable)),
 										const SizedBox(width: 4),
 										Text(
-											'Stok: ${_stockLabel(qtyAvailable)}',
+											'Stok: ${_stockLabel(qtyAvailable, satuan)}',
 											style: TextStyle(
 												fontSize: 11,
 												fontWeight: FontWeight.bold,

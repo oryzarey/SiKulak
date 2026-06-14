@@ -13,6 +13,7 @@ class Product {
   final String? imageUrl;
   final int leadTime;
   final String? abcClass; // ABC Classification (A, B, C)
+  final String satuan;
 
   // Compatibility getters for the existing UI code
   double get supplierPrice => price;
@@ -34,6 +35,7 @@ class Product {
     this.imageUrl,
     this.leadTime = 0,
     this.abcClass,
+    this.satuan = 'pcs',
   });
 
   factory Product.fromJson(Map<String, dynamic> json) {
@@ -64,6 +66,7 @@ class Product {
       imageUrl: json['image_url'] as String?,
       leadTime: (json['lead_time'] as num?)?.toInt() ?? 0,
       abcClass: json['abc_class'] as String?,
+      satuan: json['satuan']?.toString() ?? 'pcs',
     );
   }
 }
@@ -79,6 +82,7 @@ class InventoryItem {
   final DateTime? expDate;
   final DateTime? updatedAt;
   final int leadTime;
+  final String satuan;
 
   const InventoryItem({
     required this.id,
@@ -90,6 +94,7 @@ class InventoryItem {
     this.expDate,
     this.updatedAt,
     this.leadTime = 0,
+    this.satuan = 'pcs',
   });
 
   factory InventoryItem.fromJson(Map<String, dynamic> json) {
@@ -103,6 +108,7 @@ class InventoryItem {
       expDate: json['exp_date'] != null ? DateTime.tryParse(json['exp_date'].toString()) : null,
       updatedAt: json['updated_at'] != null ? DateTime.tryParse(json['updated_at'].toString()) : null,
       leadTime: (json['lead_time'] as num?)?.toInt() ?? 0,
+      satuan: json['satuan']?.toString() ?? 'pcs',
     );
   }
 }
