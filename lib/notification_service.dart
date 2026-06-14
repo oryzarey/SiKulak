@@ -63,12 +63,13 @@ class NotificationService {
   Future<void> showLowStockNotification({
     required String itemName,
     required int qty,
+    String satuan = 'pcs',
   }) async {
     if (!_initialized) await init();
 
     final body = qty == 0
         ? '$itemName sudah habis'
-        : '$itemName tinggal $qty Sachet';
+        : '$itemName tinggal $qty $satuan';
 
     const androidDetails = AndroidNotificationDetails(
       'low_stock_alerts',

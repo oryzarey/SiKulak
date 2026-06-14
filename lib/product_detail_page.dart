@@ -270,7 +270,7 @@ class _ProductDetailPageState extends State<ProductDetailPage> {
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              '252 Sachet', // packaging specification from design
+                              '${widget.product.stock} ${widget.product.satuan}', // dynamic stock and unit
                               style: TextStyle(
                                 fontSize: 14,
                                 color: Colors.grey[600],

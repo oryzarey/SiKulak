@@ -592,6 +592,7 @@ class _HomePageState extends State<HomePage> {
             NotificationService().showLowStockNotification(
               itemName: item.name,
               qty: item.qtyAvailable,
+              satuan: item.satuan,
             );
           }
         }
@@ -710,7 +711,7 @@ class _HomePageState extends State<HomePage> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                '${item.qtyAvailable} Sachet tersisa',
+                                '${item.qtyAvailable} ${item.satuan} tersisa',
                                 style: TextStyle(
                                   fontSize: 11,
                                   color: Colors.grey[600],

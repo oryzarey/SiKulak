@@ -8,9 +8,9 @@ import 'models.dart';
 import 'cart_manager.dart';
 import 'notification_page.dart';
 import 'widgets/navbar.dart';
-import 'edit_item_page.dart';
 import 'add_item_page.dart';
 import 'inventory_abc_service.dart';
+import 'edit_item_page.dart';
 
 class InventoryPage extends StatefulWidget {
   final String? initialQuery;
@@ -281,6 +281,7 @@ class _InventoryPageState extends State<InventoryPage> {
 											: nameToImage[name],
 					leadTime: (json['lead_time'] as num?)?.toInt() ?? (nameToLeadTime[name] ?? 0),
 					abcClass: json['abc_class']?.toString(),
+					satuan: json['satuan']?.toString() ?? 'pcs',
 				);
 			}).toList();
 
@@ -421,6 +422,7 @@ class _InventoryPageState extends State<InventoryPage> {
                       ? json['image_url'].toString()
                       : nameToImage[name],
           leadTime: (json['lead_time'] as num?)?.toInt() ?? (nameToLeadTime[name] ?? 0),
+          satuan: json['satuan']?.toString() ?? 'pcs',
         );
       }).toList();
 
@@ -948,7 +950,7 @@ class _InventoryPageState extends State<InventoryPage> {
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
-                        '${product.stock} Sachet',
+                        '${product.stock} ${product.satuan}',
                         style: const TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.bold,
@@ -958,7 +960,7 @@ class _InventoryPageState extends State<InventoryPage> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Safety Stock: ${_calculateSafetyStock(product)} Sachet',
+                      'Safety Stock: ${_calculateSafetyStock(product)} ${product.satuan}',
                       style: TextStyle(
                         fontSize: 10,
                         color: Colors.grey[500],
