@@ -124,7 +124,7 @@ def main_crawler():
 
     # --- PENGUMPULAN DATA ---
     data_hasil = []
-    
+
     for baris in teks_pdf.split('\n'):
         baris_lower = baris.lower()
         for kunci, properti in TARGET_BARANG.items():
@@ -147,7 +147,17 @@ def main_crawler():
                                 "supplier_name": DAFTAR_PASAR[i],
                                 "price": data_harga[i]
                             })
-                break 
+                break  # still break after first matched product per line
+
+    # --- DEDUPLICATE data_hasil ---
+    unique_data = {}
+    for item in data_hasil:
+        key = (item["product_name"], item["supplier_name"])
+        if key not in unique_data:
+            unique_data[key] = item  # keep first occurrence
+
+    data_hasil = list(unique_data.values())
+
 
     # --- INTEGRASI SUPABASE MANY-TO-MANY ---
     if data_hasil:
