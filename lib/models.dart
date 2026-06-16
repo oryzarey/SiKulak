@@ -1,12 +1,14 @@
 /// Product from the shared catalog (products table in Supabase).
 class Product {
-  final String id; // Represents the ID as a string for compatibility
-  final String categoryId; // The category_id UUID
-  final String categoryName; // The category name
+  final String id;
+  final String categoryId;
+  final String categoryName;
   final String name;
   final String brand;
   final String? supplier;
   final double price;
+  final double lastPrice;
+  final double cheapestSupplierPrice;
   final int stock;
   final double rating;
   final int reviews;
@@ -16,7 +18,7 @@ class Product {
   final String satuan;
 
   // Compatibility getters for the existing UI code
-  double get supplierPrice => price;
+  double get supplierPrice => cheapestSupplierPrice;
   String? get supplierName => supplier ?? 'Pemasok Umum';
   double get supplierRating => rating;
   String? get grade => 'A';
@@ -29,6 +31,8 @@ class Product {
     required this.brand,
     this.supplier,
     required this.price,
+    required this.lastPrice,
+    required this.cheapestSupplierPrice,
     required this.stock,
     required this.rating,
     this.reviews = 0,
@@ -57,16 +61,56 @@ class Product {
       categoryId: json['category_id']?.toString() ?? '',
       categoryName: catName,
       name: (json['name'] ?? '') as String,
-      brand: (json['brand'] ?? '') as String,
-      supplier: json['supplier'] as String?,
+      brand: json['brand']?.toString() ?? '',
+      supplier: json['supplier']?.toString(),
       price: (json['price'] as num?)?.toDouble() ?? 0.0,
+      lastPrice: (json['last_price'] as num?)?.toDouble() ?? 0.0,
+      cheapestSupplierPrice: (json['cheapest_supplier_price'] as num?)?.toDouble() ?? (json['price'] as num?)?.toDouble() ?? 0.0,
       stock: (json['stock'] as num?)?.toInt() ?? 0,
-      rating: (json['rating'] as num?)?.toDouble() ?? 0.0,
-      reviews: (json['reviews'] as num?)?.toInt() ?? 0,
+      rating: 0.0,
+      reviews: 0,
       imageUrl: json['image_url'] as String?,
-      leadTime: (json['lead_time'] as num?)?.toInt() ?? 0,
-      abcClass: json['abc_class'] as String?,
-      satuan: json['satuan']?.toString() ?? 'pcs',
+      leadTime: 0,
+      abcClass: null,
+      satuan: json['unit']?.toString() ?? json['satuan']?.toString() ?? 'pcs',
+    );
+  }
+
+  Product copyWith({
+    String? id,
+    String? categoryId,
+    String? categoryName,
+    String? name,
+    String? brand,
+    String? supplier,
+    double? price,
+    double? lastPrice,
+    double? cheapestSupplierPrice,
+    int? stock,
+    double? rating,
+    int? reviews,
+    String? imageUrl,
+    int? leadTime,
+    String? abcClass,
+    String? satuan,
+  }) {
+    return Product(
+      id: id ?? this.id,
+      categoryId: categoryId ?? this.categoryId,
+      categoryName: categoryName ?? this.categoryName,
+      name: name ?? this.name,
+      brand: brand ?? this.brand,
+      supplier: supplier ?? this.supplier,
+      price: price ?? this.price,
+      lastPrice: lastPrice ?? this.lastPrice,
+      cheapestSupplierPrice: cheapestSupplierPrice ?? this.cheapestSupplierPrice,
+      stock: stock ?? this.stock,
+      rating: rating ?? this.rating,
+      reviews: reviews ?? this.reviews,
+      imageUrl: imageUrl ?? this.imageUrl,
+      leadTime: leadTime ?? this.leadTime,
+      abcClass: abcClass ?? this.abcClass,
+      satuan: satuan ?? this.satuan,
     );
   }
 }

@@ -274,6 +274,8 @@ class _InventoryPageState extends State<InventoryPage> {
 											? json['brand'].toString()
 											: (nameToBrand[name] ?? ''),
 					price: price,
+            lastPrice: (json['last_price'] as num?)?.toDouble() ?? price,
+            cheapestSupplierPrice: (json['cheapest_supplier_price'] as num?)?.toDouble() ?? price,
 					stock: stock,
 					rating: (json['rating'] as num?)?.toDouble() ?? (nameToRating[name] ?? 4.5),
 					imageUrl: (json['image_url']?.toString() ?? '').isNotEmpty
@@ -416,6 +418,8 @@ class _InventoryPageState extends State<InventoryPage> {
                       ? json['brand'].toString()
                       : (nameToBrand[name] ?? ''),
           price: price,
+          lastPrice: (json['last_price'] as num?)?.toDouble() ?? price,
+           cheapestSupplierPrice: (json['cheapest_supplier_price'] as num?)?.toDouble() ?? price,
           stock: stock,
           rating: (json['rating'] as num?)?.toDouble() ?? (nameToRating[name] ?? 4.5),
           imageUrl: (json['image_url']?.toString() ?? '').isNotEmpty

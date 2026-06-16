@@ -24,7 +24,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   // ── State ──────────────────────────────────────────────────
-  final Set<String> _wishlistItems = {}; // local-only (no BE table)
+  bool _hideNotificationBadge = false;
   String? _selectedCategoryId; // null = "Semua Produk"
   int _selectedNavItem = 0;
 
@@ -86,6 +86,10 @@ class _HomePageState extends State<HomePage> {
             _HeaderIcon(
               icon: Icons.notifications_none_outlined,
               onTap: () async {
+                if (!mounted) return;
+                setState(() {
+                  _hideNotificationBadge = true;
+                });
                 await Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => NotificationPage(
@@ -95,7 +99,7 @@ class _HomePageState extends State<HomePage> {
                 );
               },
             ),
-            if (count > 0)
+            if (count > 0 && !_hideNotificationBadge)
               Positioned(
                 right: -1,
                 top: -1,
@@ -342,7 +346,31 @@ class _HomePageState extends State<HomePage> {
       if (!mounted) return;
       final list = data as List;
       debugPrint('[SiKulak] Fetched ${list.length} products');
-      final parsedProducts = list.map((json) => Product.fromJson(json)).toList();
+      var parsedProducts = list.map((json) => Product.fromJson(json)).toList();
+
+      if (parsedProducts.isNotEmpty) {
+        final productIds = parsedProducts.map((p) => p.id).where((id) => id.isNotEmpty).toList();
+        if (productIds.isNotEmpty) {
+          final supplierPricesResponse = await supabase
+              .from('supplier_products')
+              .select('product_id, price')
+              .filter('product_id', 'in', productIds)
+              .order('price', ascending: true);
+          final supplierPriceList = (supplierPricesResponse as List?)?.cast<Map<String, dynamic>>() ?? [];
+          final Map<String, double> cheapestPriceByProduct = {};
+          for (final item in supplierPriceList) {
+            final productId = item['product_id']?.toString() ?? '';
+            final price = (item['price'] as num?)?.toDouble();
+            if (productId.isEmpty || price == null) continue;
+            if (!cheapestPriceByProduct.containsKey(productId) || price < cheapestPriceByProduct[productId]!) {
+              cheapestPriceByProduct[productId] = price;
+            }
+          }
+          parsedProducts = parsedProducts
+              .map((p) => p.copyWith(cheapestSupplierPrice: cheapestPriceByProduct[p.id] ?? p.price))
+              .toList();
+        }
+      }
 
       setState(() {
         _products = parsedProducts;
@@ -1295,17 +1323,7 @@ class _HomePageState extends State<HomePage> {
                     final product = _filteredProducts[index];
                     return _ProductCard(
                       product: product,
-                      isWishlisted:
-                          _wishlistItems.contains(product.id),
-                      onWishlistTap: () {
-                        setState(() {
-                          if (_wishlistItems.contains(product.id)) {
-                            _wishlistItems.remove(product.id);
-                          } else {
-                            _wishlistItems.add(product.id);
-                          }
-                        });
-                      },
+                      displayPrice: product.supplierPrice,
                       onTap: () {
                         Navigator.of(context).push(
                           MaterialPageRoute(
@@ -1506,14 +1524,12 @@ class _CategoryChip extends StatelessWidget {
 class _ProductCard extends StatelessWidget {
   const _ProductCard({
     required this.product,
-    required this.isWishlisted,
-    required this.onWishlistTap,
+    required this.displayPrice,
     required this.onTap,
   });
 
   final Product product;
-  final bool isWishlisted;
-  final VoidCallback onWishlistTap;
+  final double displayPrice;
   final VoidCallback onTap;
 
   @override
@@ -1535,7 +1551,7 @@ class _ProductCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── Image area with price badge & heart ──
+            // ── Image area with price badge ──
             Expanded(
               child: Stack(
                 children: [
@@ -1559,27 +1575,6 @@ class _ProductCard extends StatelessWidget {
                             child: Icon(Icons.image,
                                 size: 50, color: Colors.grey[300])),
                   ),
-                  // Heart
-                  Positioned(
-                    top: 10,
-                    right: 10,
-                    child: GestureDetector(
-                      onTap: onWishlistTap,
-                      child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.9),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(
-                            isWishlisted
-                                ? Icons.favorite
-                                : Icons.favorite_border,
-                            color: Colors.red,
-                            size: 20),
-                      ),
-                    ),
-                  ),
                   // Price badge
                   Positioned(
                     bottom: 10,
@@ -1592,7 +1587,7 @@ class _ProductCard extends StatelessWidget {
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
-                        CartManager.formatPrice(product.supplierPrice),
+                        CartManager.formatPrice(displayPrice),
                         style: const TextStyle(
                             color: Colors.white,
                             fontWeight: FontWeight.bold,
@@ -1606,27 +1601,11 @@ class _ProductCard extends StatelessWidget {
             // ── Info area ──
             Padding(
               padding: const EdgeInsets.fromLTRB(12, 10, 12, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      const Icon(Icons.star,
-                          color: Colors.orange, size: 16),
-                      const SizedBox(width: 2),
-                      Text('${product.supplierRating}',
-                          style: const TextStyle(
-                              fontSize: 12, fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text(product.name,
-                      style: const TextStyle(
-                          fontWeight: FontWeight.w600, fontSize: 13),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis),
-                ],
-              ),
+              child: Text(product.name,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.w600, fontSize: 13),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis),
             ),
           ],
         ),
