@@ -1,25 +1,27 @@
 import os
 import requests
-import fitz  
+import fitz
 from PIL import Image, ImageChops, ImageEnhance
 import pytesseract
-from datetime import datetime, timedelta
-import urllib3
 import numpy as np
 from skimage.filters import threshold_otsu
+from datetime import datetime, timedelta
+import urllib3
 from supabase import create_client, Client
 from dotenv import load_dotenv
 
+# Nonaktifkan peringatan SSL
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# --- KONFIGURASI ENV & SUPABASE ---
+# Konfigurasi Supabase
 load_dotenv()
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_ROLE_KEY")
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
+# Konfigurasi Tesseract (Windows)
 if os.name == 'nt':
-    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+    pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
 TARGET_BARANG = {
     "beras premium": {"name": "Beras Premium", "unit": "Kg"},
@@ -34,9 +36,7 @@ TARGET_BARANG = {
     "indomilk": {"name": "Susu Kental Manis Indomilk", "unit": "Kaleng"},
     "bendera": {"name": "Susu Kental Manis Bendera", "unit": "Kaleng"},
     "rinso": {"name": "Sabun Deterjen Rinso", "unit": "Bungkus"},
-    "wings": {"name": "Sabun Colek Wings", "unit": "Bungkus"},
-    "terigu curah": {"name": "Tepung Terigu Curah", "unit": "Kg"},
-    "terigu kemasan": {"name": "Tepung Terigu Kemasan", "unit": "Kg"},
+    "wing's": {"name": "Sabun Colek Wings", "unit": "Bungkus"},
     "indomie goreng": {"name": "Indomie Goreng", "unit": "Bungkus"}
 }
 
@@ -53,26 +53,29 @@ def generate_pdf_url(tanggal):
     return f"https://pasarsurya.surabaya.go.id/wp-content/uploads/{tanggal.strftime('%Y')}/{tanggal.strftime('%m')}/{tanggal.strftime('%d')}-{bulan_indo[tanggal.month]}-{tanggal.strftime('%Y')}.pdf"
 
 def binarize_and_enhance(image):
-    if image.mode != 'L':
-        image = image.convert('L')
+    if image.mode != "L":
+        image = image.convert("L")
+
     img_array = np.array(image)
+
     try:
         thresh = threshold_otsu(img_array)
         binary = img_array > thresh
-        binary_img = Image.fromarray((binary * 255).astype(np.uint8)).convert('1')
+        binary_img = Image.fromarray((binary * 255).astype(np.uint8)).convert("1")
     except Exception:
-        binary_img = image.point(lambda p: 255 if p > 128 else 0, mode='1')
-    
-    binary_gray = binary_img.convert('L')
+        binary_img = image.point(lambda p: 255 if p > 128 else 0, mode="1")
+
+    binary_gray = binary_img.convert("L")
     enhancer = ImageEnhance.Contrast(binary_gray)
+
     return enhancer.enhance(2.0)
 
-def main_crawler():
+def main():
     tanggal_target = datetime.now()
     pdf_path = "temp_harga.pdf"
     berhasil_download = False
     
-    print("Mencari file PDF harga terbaru...")
+    # 1. PROSES CRAWLING / DOWNLOAD PDF
     for i in range(7):
         url = generate_pdf_url(tanggal_target)
         try:
@@ -80,64 +83,70 @@ def main_crawler():
             if response.status_code == 200 and b"%PDF" in response.content[:5]:
                 with open(pdf_path, "wb") as f:
                     f.write(response.content)
+                
+                # Format tanggal bahasa Indonesia untuk log
+                bulan_indo = ["", "Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"]
+                tanggal_str = f"{tanggal_target.day} {bulan_indo[tanggal_target.month]} {tanggal_target.year}"
+                
+                print(f"✅ mengambil data dari {tanggal_str}")
                 berhasil_download = True
-                print(f"✅ PDF ditemukan ({tanggal_target.strftime('%d %b %Y')})")
                 break
-            tanggal_target -= timedelta(days=1)
+            else:
+                tanggal_target -= timedelta(days=1)
         except Exception:
             tanggal_target -= timedelta(days=1)
             
     if not berhasil_download:
-        print("Gagal menemukan PDF terbaru.")
+        print("❌ Gagal menemukan PDF terbaru.")
         return
 
-    # --- RENDER & OCR ---
+    # 2. PROSES RENDER & OCR
     doc = fitz.open(pdf_path)
     halaman_pertama = doc.load_page(0)
+
     rect = halaman_pertama.rect
-    clip_area = fitz.Rect(rect.x0, rect.y0, rect.width / 2, rect.height / 2) 
-    zoom_matrix = fitz.Matrix(1100 / 72, 1100 / 72)
+    clip_area = fitz.Rect(rect.x0, rect.y0, rect.width / 2, rect.height / 2)
+    zoom_matrix = fitz.Matrix(2000 / 72, 2000 / 72)
+    
     pix = halaman_pertama.get_pixmap(matrix=zoom_matrix, clip=clip_area)
     doc.close()
-    
-    gambar_hi_res = "debug_hi_res.png"
-    pix.save(gambar_hi_res)
 
-    gambar = Image.open(gambar_hi_res)
-    gambar_gray = gambar.convert('L')
+    image_path = "debug_page.png"
+    pix.save(image_path)
+    gambar = Image.open(image_path)
+    gambar_gray = gambar.convert("L")
     kotak_tabel = ImageChops.invert(gambar_gray).getbbox()
-    
+
     if kotak_tabel:
         margin = 50
-        x1, y1 = max(0, kotak_tabel[0] - margin), max(0, kotak_tabel[1] - margin)
-        x2, y2 = min(gambar.width, kotak_tabel[2] + margin), min(gambar.height, kotak_tabel[3] + margin)
+        x1 = max(0, kotak_tabel[0] - margin)
+        y1 = max(0, kotak_tabel[1] - margin)
+        x2 = min(gambar.width, kotak_tabel[2] + margin)
+        y2 = min(gambar.height, kotak_tabel[3] + margin)
         gambar_dicrop = gambar.crop((x1, y1, x2, y2))
     else:
         gambar_dicrop = gambar
 
     gambar_final = binarize_and_enhance(gambar_dicrop)
-    teks_pdf = pytesseract.image_to_string(gambar_final, config='--psm 6')
+    teks_pdf = pytesseract.image_to_string(gambar_final, config="--psm 6")
 
-    if not teks_pdf.strip():
-        print("❌ OCR kosong.")
-        return
-
-    # --- PENGUMPULAN DATA ---
+    # 3. PROSES EKSTRAKSI DATA
     data_hasil = []
 
-    for baris in teks_pdf.split('\n'):
+    for baris in teks_pdf.split("\n"):
         baris_lower = baris.lower()
         for kunci, properti in TARGET_BARANG.items():
             if kunci in baris_lower:
                 potongan_kata = baris.split()
                 data_harga = []
+
                 for idx, kata in enumerate(potongan_kata):
-                    kata_bersih = kata.replace('.', '').replace(',', '')
-                    if kata in ['-', '–', '—'] and idx > 2:
+                    kata_bersih = kata.replace(".", "").replace(",", "")
+                    if kata in ["-", "–", "—"] and idx > 2:
                         data_harga.append(None)
                     elif kata_bersih.isdigit() and len(kata_bersih) > 2:
                         data_harga.append(int(kata_bersih))
-                
+
                 if data_harga:
                     for i in range(min(len(DAFTAR_PASAR), len(data_harga))):
                         if data_harga[i] is not None:
@@ -147,27 +156,15 @@ def main_crawler():
                                 "supplier_name": DAFTAR_PASAR[i],
                                 "price": data_harga[i]
                             })
-                break  # still break after first matched product per line
+                break 
 
-    # --- DEDUPLICATE data_hasil ---
-    unique_data = {}
-    for item in data_hasil:
-        key = (item["product_name"], item["supplier_name"])
-        if key not in unique_data:
-            unique_data[key] = item  # keep first occurrence
-
-    data_hasil = list(unique_data.values())
-
-
-    # --- INTEGRASI SUPABASE MANY-TO-MANY ---
+    # 4. PROSES INSERT/UPDATE KE SUPABASE
     if data_hasil:
-        print(f"\nMenyiapkan {len(data_hasil)} data untuk Database...")
-
-        # 1. Pastikan semua supplier (pasar) terdaftar
+        # A. Upsert Suppliers
         list_supplier = [{"name": p} for p in DAFTAR_PASAR]
         supabase.table("suppliers").upsert(list_supplier, on_conflict="name").execute()
         
-        # 2. Pastikan semua produk terdaftar
+        # B. Upsert Products
         list_product = []
         nama_produk_unik = set()
         for d in data_hasil:
@@ -176,27 +173,39 @@ def main_crawler():
                 nama_produk_unik.add(d["product_name"])
         supabase.table("products").upsert(list_product, on_conflict="name").execute()
 
-        # 3. Tarik ID dari database untuk disandingkan
+        # C. Tarik ID dari database untuk disandingkan
         sup_db = supabase.table("suppliers").select("id, name").execute()
         prod_db = supabase.table("products").select("id, name").execute()
         
         map_supplier = {row["name"]: row["id"] for row in sup_db.data}
         map_product = {row["name"]: row["id"] for row in prod_db.data}
 
+        # D. Susun payload untuk product_suppliers
         payload_relasi = []
+        tanggal_update_str = tanggal_target.strftime("%Y-%m-%d")
+        
         for d in data_hasil:
             payload_relasi.append({
                 "product_id": map_product[d["product_name"]],
                 "supplier_id": map_supplier[d["supplier_name"]],
                 "price": d["price"],
-                "last_updated": tanggal_target.strftime("%Y-%m-%d")
+                "last_updated": tanggal_update_str
             })
 
-        response = supabase.table("supplier_products").upsert(
+        # E. Eksekusi Upsert relasi Many-to-Many
+        supabase.table("product_suppliers").upsert(
             payload_relasi, on_conflict="product_id, supplier_id"
         ).execute()
         
-        print("✅ Berhasil menyimpan/mengupdate data relasi ke Supabase!")
+        # Log hasil akhir
+        print(f"✅ {len(payload_relasi)} rows updated")
+
+    else:
+        print("❌ Tidak ada data harga yang berhasil diekstrak.")
+
+    # Bersihkan file temp
+    if os.path.exists(pdf_path):
+        os.remove(pdf_path)
 
 if __name__ == "__main__":
-    main_crawler()
+    main()
