@@ -53,11 +53,11 @@ class _MyAppState extends State<MyApp> {
   void _setupAuthListener() {
     supabase.auth.onAuthStateChange.listen((data) async {
       final AuthChangeEvent event = data.event;
-      final Session? session = data.session;
 
       debugPrint('Supabase Auth Event: $event');
 
       if (event == AuthChangeEvent.passwordRecovery) {
+        _isRecoveringPassword = true;
         // Recovery harus instan, tanpa nunggu splash
         while (_navigatorKey.currentState == null) {
           await Future.delayed(const Duration(milliseconds: 50));
@@ -70,10 +70,12 @@ class _MyAppState extends State<MyApp> {
       if (event == AuthChangeEvent.initialSession || event == AuthChangeEvent.signedIn || event == AuthChangeEvent.signedOut) {
         // Tunggu sebentar agar animasi splash kelihatan
         await Future.delayed(const Duration(milliseconds: 2000));
-        
-        // Cek lagi, jika ternyata dalam 2 detik ini ada event passwordRecovery yang masuk, batalkan navigasi normal
+
+        // Jika dalam 2 detik ini passwordRecovery masuk, batalkan navigasi normal
+        if (_isRecoveringPassword) return;
+
         if (supabase.auth.currentSession == null && event == AuthChangeEvent.initialSession) {
-           _navigatorKey.currentState?.pushNamedAndRemoveUntil('/welcome', (route) => false);
+          _navigatorKey.currentState?.pushNamedAndRemoveUntil('/welcome', (route) => false);
         } else if (event == AuthChangeEvent.signedIn) {
           InventoryRealtimeService().start();
           _navigatorKey.currentState?.pushNamedAndRemoveUntil('/home', (route) => false);

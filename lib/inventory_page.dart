@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:math';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -26,7 +25,6 @@ class _InventoryPageState extends State<InventoryPage> {
   late TextEditingController _searchController;
 
   List<Product> _products = [];
-  Map<String, List<int>> _productDailySales = {};
   bool _isLoading = false;
   bool _initialLoad = true;
   Timer? _debounce;
@@ -285,48 +283,13 @@ class _InventoryPageState extends State<InventoryPage> {
 					leadTime: (json['lead_time'] as num?)?.toInt() ?? (nameToLeadTime[name] ?? 0),
 					abcClass: json['abc_class']?.toString(),
 					satuan: json['satuan']?.toString() ?? 'pcs',
+					safetyStock: (json['safety_stock'] as num?)?.toInt() ?? 0,
+					reorderPoint: (json['reorder_point'] as num?)?.toInt() ?? 0,
 				);
 			}).toList();
 
-			// Fetch sales from the last 30 days to calculate daily demand
-			final dateThreshold = DateTime.now().subtract(const Duration(days: 30)).toUtc().toIso8601String();
-			final salesData = await supabase
-					.from('pos_order_items')
-					.select('qty, inventories!inner(id), pos_orders!inner(created_at)')
-					.eq('inventories.user_id', userId)
-					.gte('pos_orders.created_at', dateThreshold);
-
-			final salesList = salesData as List? ?? [];
-			final Map<String, Map<String, int>> dailyMap = {};
-			for (final row in salesList) {
-				final inv = row['inventories'] as Map<String, dynamic>?;
-				if (inv == null) continue;
-				final id = inv['id'].toString();
-
-				final order = row['pos_orders'] as Map<String, dynamic>?;
-				if (order == null || order['created_at'] == null) continue;
-				final dateKey = order['created_at'].toString().substring(0, 10);
-
-				final qty = (row['qty'] as num?)?.toInt() ?? 0;
-
-				dailyMap.putIfAbsent(id, () => {});
-				dailyMap[id]![dateKey] = (dailyMap[id]![dateKey] ?? 0) + qty;
-			}
-
-			// Convert dailyMap to 30 days list
-			final Map<String, List<int>> productSalesList = {};
-			for (final p in parsedProducts) {
-				final dailySales = dailyMap[p.id] ?? {};
-				productSalesList[p.id] = List.generate(30, (index) {
-					final date = DateTime.now().subtract(Duration(days: index));
-					final dateKey = '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-					return dailySales[dateKey] ?? 0;
-				});
-			}
-
 			setState(() {
 				_products = parsedProducts;
-				_productDailySales = productSalesList;
 				_isLoading = false;
 				_initialLoad = false;
 			});
@@ -427,7 +390,10 @@ class _InventoryPageState extends State<InventoryPage> {
                       ? json['image_url'].toString()
                       : nameToImage[name],
           leadTime: (json['lead_time'] as num?)?.toInt() ?? (nameToLeadTime[name] ?? 0),
+          abcClass: json['abc_class']?.toString(),
           satuan: json['satuan']?.toString() ?? 'pcs',
+          safetyStock: (json['safety_stock'] as num?)?.toInt() ?? 0,
+          reorderPoint: (json['reorder_point'] as num?)?.toInt() ?? 0,
         );
       }).toList();
 
@@ -449,39 +415,6 @@ class _InventoryPageState extends State<InventoryPage> {
     });
   }
 
-  int _calculateSafetyStock(Product product) {
-    final sales = _productDailySales[product.id] ?? List.filled(30, 0);
-
-    // 1. Hitung rata-rata permintaan harian (d)
-    final double totalSales = sales.fold(0.0, (sum, val) => sum + val);
-    final double d = totalSales / 30.0; // rata-rata permintaan harian
-
-    // 2. Hitung standar deviasi permintaan harian (s_d)
-    double varianceSum = 0.0;
-    for (final s in sales) {
-      varianceSum += (s - d) * (s - d);
-    }
-    final double variance = varianceSum / 30.0;
-    final double sD = variance > 0 ? sqrt(variance) : 0.0; // s_d
-
-    // 3. Lead time (l) dan standar deviasi lead time (s_l)
-    // s_l = 0 karena data variabilitas lead time supplier tidak tersedia
-    final double l = product.leadTime.toDouble(); // rata-rata lead time
-    const double sL = 0.0; // standar deviasi lead time (asumsi deterministik)
-
-    // 4. Standar deviasi gabungan selama lead time:
-    //    σ_d = √(d² × s_l² + l × s_d²)
-    //    Menggabungkan ketidakpastian permintaan DAN lead time
-    final double sigmaD = sqrt((d * d * sL * sL) + (l * sD * sD));
-
-    // 5. Safety Stock = Z(SL) × σ_d
-    //    Z = 3 untuk Service Level 99,9% (stock-out probability 0,01%)
-    const double zValue = 3.0;
-    final double ss = zValue * sigmaD;
-
-    return ss.round().clamp(0, 9999);
-  }
-
   // ── Filtered products by stock & ABC ─────────────────────────────
   List<Product> get _filteredProducts {
     List<Product> list = _products;
@@ -489,10 +422,10 @@ class _InventoryPageState extends State<InventoryPage> {
     // 1. Stock Filter
     switch (_stockFilter) {
       case 'Stock Tersedia':
-        list = list.where((p) => p.stock > _calculateSafetyStock(p)).toList();
+        list = list.where((p) => p.stock > p.safetyStock).toList();
         break;
       case 'Stock Sedikit':
-        list = list.where((p) => p.stock > 0 && p.stock <= _calculateSafetyStock(p)).toList();
+        list = list.where((p) => p.stock > 0 && p.stock <= p.safetyStock).toList();
         break;
       case 'Stok Habis':
         list = list.where((p) => p.stock == 0).toList();
@@ -512,7 +445,7 @@ class _InventoryPageState extends State<InventoryPage> {
   // ── Stock badge color helpers ──────────────────────────────
   Color _stockBadgeColor(Product product) {
     if (product.stock == 0) return const Color(0xFFEF4444);
-    if (product.stock <= _calculateSafetyStock(product)) return const Color(0xFFF59E0B);
+    if (product.stock <= product.safetyStock) return const Color(0xFFF59E0B);
     return const Color(0xFF22C55E);
   }
 
@@ -897,7 +830,7 @@ class _InventoryPageState extends State<InventoryPage> {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Safety Stock: ${_calculateSafetyStock(product)} ${product.satuan}',
+                      'Safety Stock: ${product.safetyStock} ${product.satuan}',
                       style: TextStyle(
                         fontSize: 10,
                         color: Colors.grey[500],

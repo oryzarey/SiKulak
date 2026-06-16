@@ -16,6 +16,8 @@ class Product {
   final int leadTime;
   final String? abcClass; // ABC Classification (A, B, C)
   final String satuan;
+  final int safetyStock;
+  final int reorderPoint;
 
   // Compatibility getters for the existing UI code
   double get supplierPrice => cheapestSupplierPrice;
@@ -40,6 +42,8 @@ class Product {
     this.leadTime = 0,
     this.abcClass,
     this.satuan = 'pcs',
+    this.safetyStock = 0,
+    this.reorderPoint = 0,
   });
 
   factory Product.fromJson(Map<String, dynamic> json) {
@@ -93,6 +97,8 @@ class Product {
     int? leadTime,
     String? abcClass,
     String? satuan,
+    int? safetyStock,
+    int? reorderPoint,
   }) {
     return Product(
       id: id ?? this.id,
@@ -111,6 +117,8 @@ class Product {
       leadTime: leadTime ?? this.leadTime,
       abcClass: abcClass ?? this.abcClass,
       satuan: satuan ?? this.satuan,
+      safetyStock: safetyStock ?? this.safetyStock,
+      reorderPoint: reorderPoint ?? this.reorderPoint,
     );
   }
 }
@@ -127,6 +135,8 @@ class InventoryItem {
   final DateTime? updatedAt;
   final int leadTime;
   final String satuan;
+  final int safetyStock;
+  final int reorderPoint;
 
   const InventoryItem({
     required this.id,
@@ -139,6 +149,8 @@ class InventoryItem {
     this.updatedAt,
     this.leadTime = 0,
     this.satuan = 'pcs',
+    this.safetyStock = 0,
+    this.reorderPoint = 0,
   });
 
   factory InventoryItem.fromJson(Map<String, dynamic> json) {
@@ -153,6 +165,8 @@ class InventoryItem {
       updatedAt: json['updated_at'] != null ? DateTime.tryParse(json['updated_at'].toString()) : null,
       leadTime: (json['lead_time'] as num?)?.toInt() ?? 0,
       satuan: json['satuan']?.toString() ?? 'pcs',
+      safetyStock: (json['safety_stock'] as num?)?.toInt() ?? 0,
+      reorderPoint: (json['reorder_point'] as num?)?.toInt() ?? 0,
     );
   }
 }

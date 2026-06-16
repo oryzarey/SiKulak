@@ -92,11 +92,13 @@ class InventoryRealtimeService {
           .from('inventories')
           .select()
           .eq('user_id', userId)
-          .lte('qty_available', 10)
           .order('qty_available', ascending: true);
 
+      // Filter client-side: hanya item dengan ROP sudah dihitung (> 0)
+      // dan qty sudah menyentuh atau melewati batas reorder point.
       final items = (data as List)
           .map((j) => InventoryItem.fromJson(j))
+          .where((i) => i.reorderPoint > 0 && i.qtyAvailable <= i.reorderPoint)
           .toList();
 
       if (items.isEmpty) return;

@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:math';
-import 'dart:ui';
 import 'package:sikulak/widgets/glass_container.dart';
 
 import 'widgets/app_header.dart';
@@ -665,33 +663,9 @@ class _PosPageState extends State<PosPage> {
 		);
 	}
 
-	/// Safety stock POS: Formula gabungan ketidakpastian permintaan + lead time
-	/// σ_d = √(d² × s_l² + l × s_d²), Z = 3 (Service Level 99,9%)
-	int _posSafetyStock(InventoryItem item) {
-		// d = rata-rata permintaan harian (total terjual / 30 hari)
-		final totalSold = (_salesCountMap[item.id] ?? 0).toDouble();
-		final double d = totalSold / 30.0;
-
-		// s_d = standar deviasi permintaan harian (aproksimasi: 50% dari rata-rata)
-		final double sD = d * 0.5;
-
-		// l = rata-rata lead time (hari), s_l = 0 (deterministik, data variabilitas supplier tidak tersedia)
-		final double l = item.leadTime.toDouble();
-		const double sL = 0.0;
-
-		// σ_d = √(d² × s_l² + l × s_d²)
-		final double sigmaD = sqrt((d * d * sL * sL) + (l * sD * sD));
-
-		// SS = Z(SL) × σ_d, Z = 3 untuk 99,9% service level
-		const double zValue = 3.0;
-		final double ss = zValue * sigmaD;
-
-		return ss.round().clamp(0, 9999);
-	}
-
 	Color _stockColor(InventoryItem item) {
 		if (item.qtyAvailable == 0) return const Color(0xFFDC2626); // Merah - Habis
-		if (item.qtyAvailable <= _posSafetyStock(item)) return const Color(0xFFEAB308); // Kuning - Di bawah Safety Stock
+		if (item.qtyAvailable <= item.safetyStock) return const Color(0xFFEAB308); // Kuning - Di bawah Safety Stock
 		return const Color(0xFF16A34A); // Hijau - Aman
 	}
 
