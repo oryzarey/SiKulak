@@ -1,0 +1,8 @@
+requests
+PyMuPDF
+Pillow
+pytesseract
+supabase
+python-dotenv
+numpy
+scikit-image
