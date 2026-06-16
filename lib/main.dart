@@ -66,13 +66,23 @@ class _MyAppState extends State<MyApp> {
         return;
       }
 
+      // Password berhasil diubah — reset flag supaya login normal berikutnya tidak terblokir.
+      if (event == AuthChangeEvent.userUpdated) {
+        _isRecoveringPassword = false;
+        return;
+      }
+
       // Untuk flow normal (app open/login/logout), beri waktu splash screen
       if (event == AuthChangeEvent.initialSession || event == AuthChangeEvent.signedIn || event == AuthChangeEvent.signedOut) {
         // Tunggu sebentar agar animasi splash kelihatan
         await Future.delayed(const Duration(milliseconds: 2000));
 
-        // Jika dalam 2 detik ini passwordRecovery masuk, batalkan navigasi normal
-        if (_isRecoveringPassword) return;
+        // Jika dalam 2 detik ini passwordRecovery masuk, batalkan navigasi normal.
+        // Reset flag agar signedIn dari login manual berikutnya tidak ikut terblokir.
+        if (_isRecoveringPassword) {
+          _isRecoveringPassword = false;
+          return;
+        }
 
         if (supabase.auth.currentSession == null && event == AuthChangeEvent.initialSession) {
           _navigatorKey.currentState?.pushNamedAndRemoveUntil('/welcome', (route) => false);

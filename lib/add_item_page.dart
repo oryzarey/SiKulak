@@ -123,13 +123,14 @@ class _AddItemPageState extends State<AddItemPage> {
         
         final bytes = await image.readAsBytes();
         final imageUrl = await _uploadImageToStorage(bytes);
-        
+
+        if (!mounted) return;
         setState(() {
           _selectedImageBytes = bytes;
           _imageUrl = imageUrl;
           _isUploadingImage = false;
         });
-        
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Foto berhasil diupload'),
@@ -139,6 +140,7 @@ class _AddItemPageState extends State<AddItemPage> {
         );
       }
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _isUploadingImage = false;
       });

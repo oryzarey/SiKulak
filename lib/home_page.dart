@@ -406,7 +406,7 @@ class _HomePageState extends State<HomePage> {
       // 1. Fetch inventories for out-of-stock and low stock
       final inventoriesResponse = await supabase
           .from('inventories')
-          .select('qty_available')
+          .select('qty_available, reorder_point')
           .eq('user_id', userId);
 
       final invList = inventoriesResponse as List;
@@ -414,9 +414,10 @@ class _HomePageState extends State<HomePage> {
       int lowStock = 0;
       for (final item in invList) {
         final stock = (item['qty_available'] as num?)?.toInt() ?? 0;
+        final reorderPoint = (item['reorder_point'] as num?)?.toInt() ?? 0;
         if (stock == 0) {
           outOfStock++;
-        } else if (stock <= 5) {
+        } else if (reorderPoint > 0 && stock <= reorderPoint) {
           lowStock++;
         }
       }
@@ -566,13 +567,15 @@ class _HomePageState extends State<HomePage> {
           .from('inventories')
           .select()
           .eq('user_id', userId)
-          .lte('qty_available', 10)
           .order('qty_available', ascending: true);
 
       if (!mounted) return;
 
       final items = (data as List)
           .map((j) => InventoryItem.fromJson(j))
+          .where((item) =>
+              item.qtyAvailable == 0 ||
+              (item.reorderPoint > 0 && item.qtyAvailable <= item.reorderPoint))
           .toList()
         ..sort((a, b) {
           final aOut = a.qtyAvailable == 0;
