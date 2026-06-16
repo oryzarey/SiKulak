@@ -180,7 +180,7 @@ def main():
         map_supplier = {row["name"]: row["id"] for row in sup_db.data}
         map_product = {row["name"]: row["id"] for row in prod_db.data}
 
-        # D. Susun payload untuk product_suppliers
+        # D. Susun payload untuk supplier_products
         payload_relasi = []
         tanggal_update_str = tanggal_target.strftime("%Y-%m-%d")
         
@@ -193,7 +193,7 @@ def main():
             })
 
         # E. Eksekusi Upsert relasi Many-to-Many
-        supabase.table("product_suppliers").upsert(
+        supabase.table("supplier_products").upsert(
             payload_relasi, on_conflict="product_id, supplier_id"
         ).execute()
         

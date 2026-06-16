@@ -1,9 +1,10 @@
 import 'dart:async';
 import 'dart:math';
 import 'dart:ui';
+import 'package:sikulak/widgets/glass_container.dart';
 
+import 'widgets/app_header.dart';
 import 'package:flutter/material.dart';
-
 import 'cart_manager.dart';
 import 'main.dart';
 import 'models.dart';
@@ -699,98 +700,6 @@ class _PosPageState extends State<PosPage> {
 		return '$qty $satuan';
 	}
 
-
-	Widget _buildSliverAppBar() {
-		return SliverAppBar(
-			backgroundColor: Colors.transparent,
-			elevation: 0,
-			pinned: true,
-			toolbarHeight: 140,
-			automaticallyImplyLeading: false,
-			titleSpacing: 0,
-			title: StreamBuilder<UserProfile?>(
-				stream: _profileStream(),
-				builder: (context, snapshot) {
-					final profile = snapshot.data;
-					final userName = profile?.fullName ?? _userName;
-					final avatarUrl = profile?.avatarUrl;
-
-					return Container(
-						padding: const EdgeInsets.only(top: 15, left: 20, right: 20),
-						child: Row(
-							mainAxisAlignment: MainAxisAlignment.spaceBetween,
-							children: [
-								// User Profile (Top Left)
-								_GlassContainer(
-									padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-									borderRadius: BorderRadius.circular(30),
-									child: Row(
-										children: [
-											Container(
-												width: 36,
-												height: 36,
-												decoration: const BoxDecoration(
-													shape: BoxShape.circle,
-													color: Colors.white24,
-												),
-												child: avatarUrl != null && avatarUrl.isNotEmpty
-														? ClipOval(
-																child: Image.network(
-																	'$avatarUrl?t=${profile?.updatedAt.millisecondsSinceEpoch ?? DateTime.now().millisecondsSinceEpoch}',
-																	fit: BoxFit.cover,
-																	errorBuilder: (context, error, stackTrace) {
-																		return const Icon(Icons.person,
-																				color: Colors.white, size: 22);
-																	},
-																),
-															)
-														: const Icon(Icons.person,
-																color: Colors.white, size: 22),
-											),
-											const SizedBox(width: 10),
-											Column(
-												crossAxisAlignment: CrossAxisAlignment.start,
-												mainAxisSize: MainAxisSize.min,
-												children: [
-													const Text(
-														'Selamat datang,',
-														style: TextStyle(
-															color: Colors.white70,
-															fontSize: 11,
-														),
-													),
-													Text(
-														userName,
-														style: const TextStyle(
-															color: Colors.white,
-															fontSize: 14,
-															fontWeight: FontWeight.bold,
-														),
-														overflow: TextOverflow.ellipsis,
-													),
-												],
-											),
-										],
-									),
-								),
-								// Notification (Top Right)
-								_buildNotificationBadgeIcon(),
-							],
-						),
-					);
-				}
-			),
-			flexibleSpace: ClipRRect(
-				borderRadius: const BorderRadius.vertical(bottom: Radius.circular(20)),
-				child: BackdropFilter(
-					filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-					child: Container(
-						color: const Color(0xFF2979FF).withValues(alpha: 0.8),
-					),
-				),
-			),
-		);
-	}
 
 	Widget _buildSearchPanel() {
 		return Container(
@@ -1786,11 +1695,23 @@ class _PosPageState extends State<PosPage> {
 				child: CustomScrollView(
 					physics: const AlwaysScrollableScrollPhysics(),
 					slivers: [
-						_buildSliverAppBar(),
-						SliverToBoxAdapter(child: _buildSearchPanel()),
-						...bodySlivers,
-						const SliverToBoxAdapter(child: SizedBox(height: 110)),
-					],
+            AppHeader(
+              profileStream: _profileStream(),
+              fallbackUserName: _userName,
+              notificationWidget: _buildNotificationBadgeIcon(),
+
+              // Optional
+              onProfileTap: () {
+                Navigator.pop(context, 4);
+              },
+            ),
+
+            SliverToBoxAdapter(
+              child: _buildSearchPanel(),
+            ),
+
+            ...bodySlivers,
+          ],
 				),
 			),
 			bottomNavigationBar: Column(
@@ -1810,37 +1731,6 @@ class _PosPageState extends State<PosPage> {
 	}
 }
 
-class _GlassContainer extends StatelessWidget {
-	final Widget child;
-	final EdgeInsetsGeometry padding;
-	final BorderRadiusGeometry borderRadius;
-
-	const _GlassContainer({
-		required this.child,
-		this.padding = const EdgeInsets.all(12),
-		this.borderRadius = const BorderRadius.all(Radius.circular(20)),
-	});
-
-	@override
-	Widget build(BuildContext context) {
-		return ClipRRect(
-			borderRadius: borderRadius,
-			child: BackdropFilter(
-				filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-				child: Container(
-					padding: padding,
-					decoration: BoxDecoration(
-						color: Colors.white.withValues(alpha: 0.15),
-						borderRadius: borderRadius,
-						border: Border.all(
-							color: Colors.white.withValues(alpha: 0.2), width: 1.5),
-					),
-					child: child,
-				),
-			),
-		);
-	}
-}
 
 class _HeaderIcon extends StatelessWidget {
 	const _HeaderIcon({required this.icon, required this.onTap});
@@ -1851,7 +1741,7 @@ class _HeaderIcon extends StatelessWidget {
 	Widget build(BuildContext context) {
 		return GestureDetector(
 			onTap: onTap,
-			child: _GlassContainer(
+			child: GlassContainer(
 				padding: EdgeInsets.zero,
 				borderRadius: BorderRadius.circular(50),
 				child: Center(child: Icon(icon, color: Colors.white, size: 24)),

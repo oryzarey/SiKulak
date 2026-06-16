@@ -11,6 +11,7 @@ import 'widgets/navbar.dart';
 import 'add_item_page.dart';
 import 'inventory_abc_service.dart';
 import 'edit_item_page.dart';
+import 'widgets/app_header.dart';
 
 class InventoryPage extends StatefulWidget {
   final String? initialQuery;
@@ -304,7 +305,7 @@ class _InventoryPageState extends State<InventoryPage> {
 
 				final order = row['pos_orders'] as Map<String, dynamic>?;
 				if (order == null || order['created_at'] == null) continue;
-				final dateKey = order['created_at'].toString().substring(0, 10); // YYYY-MM-DD
+				final dateKey = order['created_at'].toString().substring(0, 10);
 
 				final qty = (row['qty'] as num?)?.toInt() ?? 0;
 
@@ -536,85 +537,17 @@ class _InventoryPageState extends State<InventoryPage> {
             parent: AlwaysScrollableScrollPhysics()),
         slivers: [
           // ─────────── 1. HEADER SECTION ───────────
-          SliverAppBar(
-            backgroundColor: Colors.transparent,
-            elevation: 0,
-            pinned: true,
-            toolbarHeight: 140,
-            automaticallyImplyLeading: false,
-            titleSpacing: 0,
-            title: StreamBuilder<UserProfile?>(
-              stream: _profileStream(),
-              builder: (context, snapshot) {
-                final profile = snapshot.data;
-                final userName = profile?.fullName ?? _userName;
+            AppHeader(
+            profileStream: _profileStream(),
+            fallbackUserName: _userName,
+            notificationWidget: _buildNotificationBadgeIcon(),
 
-                return Container(
-                  padding: const EdgeInsets.only(top: 15, left: 20, right: 20),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      // User Profile (Top Left)
-                      _GlassContainer(
-                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                        borderRadius: BorderRadius.circular(30),
-                        child: Row(
-                          children: [
-                            Container(
-                              width: 36,
-                              height: 36,
-                              decoration: const BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: Colors.white24,
-                              ),
-                              child: profile?.avatarUrl != null && profile!.avatarUrl!.isNotEmpty
-                                  ? ClipOval(
-                                      child: Image.network(
-                                        '${profile.avatarUrl}?t=${profile.updatedAt.millisecondsSinceEpoch}',
-                                        fit: BoxFit.cover,
-                                        errorBuilder: (context, error, stackTrace) {
-                                          return const Icon(Icons.person,
-                                              color: Colors.white, size: 22);
-                                        },
-                                      ),
-                                    )
-                                  : const Icon(Icons.person,
-                                      color: Colors.white, size: 22),
-                            ),
-                            const SizedBox(width: 10),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                const Text('Selamat datang,',
-                                    style: TextStyle(color: Colors.white70, fontSize: 11)),
-                                Text(userName,
-                                    style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14)),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                      // Notification (Top Right)
-                      _buildNotificationBadgeIcon(),
-                    ],
-                  ),
-                );
-              }
-            ),
-            flexibleSpace: ClipRRect(
-              borderRadius: const BorderRadius.vertical(bottom: Radius.circular(20)),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-                child: Container(
-                  color: const Color(0xFF2979FF).withValues(alpha: 0.8),
-                ),
-              ),
-            ),
+            // Optional
+            onProfileTap: () {
+              Navigator.pop(context, 4);
+            },
           ),
+
 
           // ─────────── 2. SEARCH & MAIN ACTIONS ───────────
           SliverToBoxAdapter(
