@@ -84,8 +84,13 @@ class _MyAppState extends State<MyApp> {
           return;
         }
 
-        if (supabase.auth.currentSession == null && event == AuthChangeEvent.initialSession) {
-          _navigatorKey.currentState?.pushNamedAndRemoveUntil('/welcome', (route) => false);
+        if (event == AuthChangeEvent.initialSession) {
+          if (supabase.auth.currentSession == null) {
+            _navigatorKey.currentState?.pushNamedAndRemoveUntil('/welcome', (route) => false);
+          } else {
+            InventoryRealtimeService().start();
+            _navigatorKey.currentState?.pushNamedAndRemoveUntil('/home', (route) => false);
+          }
         } else if (event == AuthChangeEvent.signedIn) {
           InventoryRealtimeService().start();
           _navigatorKey.currentState?.pushNamedAndRemoveUntil('/home', (route) => false);
