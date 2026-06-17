@@ -25,8 +25,10 @@ Future<void> main() async {
   );
   // Initialize OS notifications
   await NotificationService().init();
-  await NotificationService().requestPermission();
   runApp(const MyApp());
+  
+  // Request permission asynchronously after runApp so it doesn't block initialization
+  NotificationService().requestPermission();
 }
 
 /// Global accessor for the Supabase client — use throughout the app.
