@@ -2,7 +2,6 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'welcome_page.dart';
-import 'splash_page.dart';
 import 'home_page.dart';
 import 'inventory_page.dart';
 import 'pos_page.dart';
@@ -24,11 +23,12 @@ Future<void> main() async {
     ),
   );
   // Initialize OS notifications
-  await NotificationService().init();
+  // (Di-comment sementara karena diduga kuat menyebabkan crash di versi Release)
+  // await NotificationService().init();
+  
   runApp(const MyApp());
   
-  // Request permission asynchronously after runApp so it doesn't block initialization
-  NotificationService().requestPermission();
+  // NotificationService().requestPermission();
 }
 
 /// Global accessor for the Supabase client — use throughout the app.
@@ -100,7 +100,9 @@ class _MyAppState extends State<MyApp> {
           seedColor: const Color(0xFF2979FF),
         ),
       ),
-      home: const SplashPage(),
+      home: supabase.auth.currentSession == null
+          ? const WelcomePage()
+          : const HomePage(),
       routes: {
         '/home': (context) => const HomePage(),
         '/login': (context) => const LoginPage(),
