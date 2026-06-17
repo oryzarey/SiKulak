@@ -72,32 +72,15 @@ class _MyAppState extends State<MyApp> {
         return;
       }
 
-      // Untuk flow normal (app open/login/logout), beri waktu splash screen
-      if (event == AuthChangeEvent.initialSession || event == AuthChangeEvent.signedIn || event == AuthChangeEvent.signedOut) {
-        // Tunggu sebentar agar animasi splash kelihatan
-        await Future.delayed(const Duration(milliseconds: 2000));
-
-        // Jika dalam 2 detik ini passwordRecovery masuk, batalkan navigasi normal.
-        // Reset flag agar signedIn dari login manual berikutnya tidak ikut terblokir.
-        if (_isRecoveringPassword) {
-          _isRecoveringPassword = false;
-          return;
-        }
-
-        if (event == AuthChangeEvent.initialSession) {
-          if (supabase.auth.currentSession == null) {
-            _navigatorKey.currentState?.pushNamedAndRemoveUntil('/welcome', (route) => false);
-          } else {
-            InventoryRealtimeService().start();
-            _navigatorKey.currentState?.pushNamedAndRemoveUntil('/home', (route) => false);
-          }
-        } else if (event == AuthChangeEvent.signedIn) {
-          InventoryRealtimeService().start();
-          _navigatorKey.currentState?.pushNamedAndRemoveUntil('/home', (route) => false);
-        } else if (event == AuthChangeEvent.signedOut) {
-          InventoryRealtimeService().stop();
-          _navigatorKey.currentState?.pushNamedAndRemoveUntil('/welcome', (route) => false);
-        }
+      if (event == AuthChangeEvent.initialSession) {
+        // Abaikan initialSession di sini.
+        // Navigasi awal akan ditangani langsung oleh SplashPage setelah animasi selesai.
+      } else if (event == AuthChangeEvent.signedIn) {
+        InventoryRealtimeService().start();
+        _navigatorKey.currentState?.pushNamedAndRemoveUntil('/home', (route) => false);
+      } else if (event == AuthChangeEvent.signedOut) {
+        InventoryRealtimeService().stop();
+        _navigatorKey.currentState?.pushNamedAndRemoveUntil('/welcome', (route) => false);
       }
     });
   }

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'main.dart';
+import 'inventory_realtime_service.dart';
 
 class SplashPage extends StatefulWidget {
   const SplashPage({super.key});
@@ -32,8 +34,17 @@ class _SplashPageState extends State<SplashPage> with SingleTickerProviderStateM
 
     _animationController.forward();
 
-    // Redundant navigation removed.
-    // Navigation is now handled globally in lib/main.dart by the Auth listener.
+    Future.delayed(const Duration(milliseconds: 2000), () {
+      if (!mounted) return;
+      
+      final currentSession = supabase.auth.currentSession;
+      if (currentSession != null) {
+        InventoryRealtimeService().start();
+        Navigator.pushReplacementNamed(context, '/home');
+      } else {
+        Navigator.pushReplacementNamed(context, '/welcome');
+      }
+    });
   }
 
   @override
