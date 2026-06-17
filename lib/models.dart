@@ -60,6 +60,11 @@ class Product {
       }
     }
 
+    // Fallback: if catName is empty, try direct 'category_name' field
+    if (catName.isEmpty) {
+      catName = json['category_name']?.toString() ?? '';
+    }
+
     return Product(
       id: json['id']?.toString() ?? '',
       categoryId: json['category_id']?.toString() ?? '',

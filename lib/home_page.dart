@@ -25,7 +25,6 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   // ── State ──────────────────────────────────────────────────
-  bool _hideNotificationBadge = false;
   String? _selectedCategoryId; // null = "Semua Produk"
   int _selectedNavItem = 0;
 
@@ -88,9 +87,6 @@ class _HomePageState extends State<HomePage> {
               icon: Icons.notifications_none_outlined,
               onTap: () async {
                 if (!mounted) return;
-                setState(() {
-                  _hideNotificationBadge = true;
-                });
                 await Navigator.of(context).push(
                   MaterialPageRoute(
                     builder: (_) => NotificationPage(
@@ -98,9 +94,12 @@ class _HomePageState extends State<HomePage> {
                     ),
                   ),
                 );
+                if (mounted) {
+                  setState(() {});
+                }
               },
             ),
-            if (count > 0 && !_hideNotificationBadge)
+            if (count > 0)
               Positioned(
                 right: -1,
                 top: -1,
@@ -152,7 +151,7 @@ class _HomePageState extends State<HomePage> {
       if ((data as List).isEmpty) {
         debugPrint('[SiKulak] User has empty inventory. Initializing from global products catalog...');
         // Fetch all global products
-        final globalProducts = await supabase.from('products').select();
+        final globalProducts = await supabase.from('products').select('*, categories(id, name)');
         final list = globalProducts as List;
 
         // Insert each product into inventories
@@ -199,7 +198,7 @@ class _HomePageState extends State<HomePage> {
         final needsHealing = listUnhealed.any((item) => item['image_url'] == null);
         if (needsHealing) {
           debugPrint('[SiKulak] Found inventories with null image_url. Healing from products catalog...');
-          final globalProducts = await supabase.from('products').select();
+          final globalProducts = await supabase.from('products').select('*, categories(id, name)');
           final Map<String, Map<String, dynamic>> prodMap = {};
           for (final p in globalProducts as List) {
             final name = (p['name'] ?? '') as String;
@@ -248,10 +247,9 @@ class _HomePageState extends State<HomePage> {
   // ── Data loading ───────────────────────────────────────────
   Future<void> _loadData() async {
     await _checkAndInitializeInventory();
-    // Run independently so one failure doesn't block the others
-    _fetchProfile();
-    _fetchCategories();
-    _fetchSalesInsights();
+    _fetchProfile();       // fire-and-forget: tidak mempengaruhi produk/kategori
+    _fetchSalesInsights(); // fire-and-forget: independent
+    await _fetchCategories();
     await _fetchProducts();
     if (!_lowStockChecked) {
       _lowStockChecked = true;
@@ -319,7 +317,7 @@ class _HomePageState extends State<HomePage> {
   Future<void> _fetchCategories() async {
     try {
       final data =
-          await supabase.from('categories').select().order('name');
+          await supabase.from('categories').select().order('sort_order').order('name');
       if (!mounted) return;
       setState(() {
         _categories =
@@ -342,7 +340,7 @@ class _HomePageState extends State<HomePage> {
     try {
       final data = await supabase
           .from('products')
-          .select();
+          .select('*, categories(id, name)');
 
       if (!mounted) return;
       final list = data as List;
@@ -511,21 +509,25 @@ class _HomePageState extends State<HomePage> {
     );
   }
 
-
-
-  // ── Filtered products ──────────────────────────────────────
+  // ── Filtered products ──────────────────────────────────────────
   List<Product> get _filteredProducts {
     if (_selectedCategoryId == null) return _products;
-    final isUuid = _selectedCategoryId!.contains('-');
-    if (isUuid) {
-      return _products
-          .where((p) => p.categoryId == _selectedCategoryId)
-          .toList();
-    } else {
-      return _products
-          .where((p) => p.categoryName.toLowerCase() == _selectedCategoryId!.toLowerCase())
-          .toList();
-    }
+
+    // Find the selected category object to get both id and name
+    final selectedCat = _categories.cast<Category?>().firstWhere(
+      (c) => c!.id == _selectedCategoryId,
+      orElse: () => null,
+    );
+    final catName = selectedCat?.name.toLowerCase() ?? '';
+    final catId = _selectedCategoryId!;
+
+    return _products.where((p) {
+      // Match by categoryId (UUID or string)
+      if (p.categoryId.isNotEmpty && p.categoryId == catId) return true;
+      // Match by categoryName
+      if (catName.isNotEmpty && p.categoryName.toLowerCase() == catName) return true;
+      return false;
+    }).toList();
   }
 
   Future<bool> _shouldInsertNotification({
@@ -545,12 +547,18 @@ class _HomePageState extends State<HomePage> {
     if (lastNotif == null) return true;
 
     final lastType = lastNotif['type']?.toString();
-    final lastCreatedAt = DateTime.tryParse(lastNotif['created_at']?.toString() ?? '');
+    final lastCreatedAt = DateTime.tryParse(lastNotif['created_at']?.toString() ?? '')?.toUtc();
 
     if (lastType != notifType) return true;
 
+    // Cooldown: don't insert if last notification of same type was < 24 hours ago
+    if (lastCreatedAt != null) {
+      final hoursSince = DateTime.now().toUtc().difference(lastCreatedAt).inHours;
+      if (hoursSince < 24) return false;
+    }
+
     if (item.updatedAt != null && lastCreatedAt != null) {
-      return item.updatedAt!.isAfter(lastCreatedAt);
+      return item.updatedAt!.toUtc().isAfter(lastCreatedAt);
     }
 
     return false;

@@ -1,14 +1,6 @@
 -- WARNING: This schema is for context only and is not meant to be run.
 -- Table order and constraints may not be valid for execution.
 
-CREATE TABLE public.todos (
-  id uuid NOT NULL DEFAULT gen_random_uuid(),
-  title text NOT NULL,
-  is_complete boolean NOT NULL DEFAULT false,
-  created_at timestamp with time zone NOT NULL DEFAULT now(),
-  updated_at timestamp with time zone NOT NULL DEFAULT now(),
-  CONSTRAINT todos_pkey PRIMARY KEY (id)
-);
 CREATE TABLE public.categories (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
   name text NOT NULL,
@@ -21,7 +13,10 @@ CREATE TABLE public.products (
   price numeric DEFAULT 0,
   unit text,
   last_price numeric,
-  CONSTRAINT products_pkey PRIMARY KEY (id)
+  category_id uuid,
+  brand text,
+  CONSTRAINT products_pkey PRIMARY KEY (id),
+  CONSTRAINT products_category_id_fkey FOREIGN KEY (category_id) REFERENCES public.categories(id)
 );
 CREATE TABLE public.suppliers (
   id uuid NOT NULL DEFAULT gen_random_uuid(),
@@ -33,8 +28,8 @@ CREATE TABLE public.supplier_products (
   product_id uuid,
   supplier_id uuid,
   price numeric NOT NULL,
-  lead_time_days integer,
   last_updated timestamp with time zone DEFAULT now(),
+  lead_time_days integer,
   CONSTRAINT supplier_products_pkey PRIMARY KEY (id),
   CONSTRAINT supplier_products_product_id_fkey FOREIGN KEY (product_id) REFERENCES public.products(id),
   CONSTRAINT supplier_products_supplier_id_fkey FOREIGN KEY (supplier_id) REFERENCES public.suppliers(id)
@@ -50,11 +45,11 @@ CREATE TABLE public.inventories (
   updated_at timestamp with time zone,
   image_url text,
   lead_time integer DEFAULT 3,
-  safety_stock integer DEFAULT 0,
-  reorder_point integer DEFAULT 0,
   abc_class text CHECK (abc_class = ANY (ARRAY['A'::text, 'B'::text, 'C'::text])),
   brand text,
   satuan character varying DEFAULT 'pcs'::character varying,
+  safety_stock integer NOT NULL DEFAULT 0,
+  reorder_point integer NOT NULL DEFAULT 0,
   CONSTRAINT inventories_pkey PRIMARY KEY (id),
   CONSTRAINT inventories_user_id_fkey FOREIGN KEY (user_id) REFERENCES auth.users(id)
 );

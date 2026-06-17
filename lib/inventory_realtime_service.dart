@@ -72,12 +72,18 @@ class InventoryRealtimeService {
     if (lastNotif == null) return true;
 
     final lastType = lastNotif['type']?.toString();
-    final lastCreatedAt = DateTime.tryParse(lastNotif['created_at']?.toString() ?? '');
+    final lastCreatedAt = DateTime.tryParse(lastNotif['created_at']?.toString() ?? '')?.toUtc();
 
     if (lastType != notifType) return true;
 
+    // Cooldown: don't insert if last notification of same type was < 24 hours ago
+    if (lastCreatedAt != null) {
+      final hoursSince = DateTime.now().toUtc().difference(lastCreatedAt).inHours;
+      if (hoursSince < 24) return false;
+    }
+
     if (item.updatedAt != null && lastCreatedAt != null) {
-      return item.updatedAt!.isAfter(lastCreatedAt);
+      return item.updatedAt!.toUtc().isAfter(lastCreatedAt);
     }
 
     return false;

@@ -21,8 +21,11 @@ class _ProductSearchPageState extends State<ProductSearchPage> {
   String? _errorMessage;
   
   String? _selectedCategoryId; // null = "Semua Kategori"
-  String _sortBy = 'name'; // 'name', 'price_asc', 'price_desc', 'rating', 'stock'
+  String _sortBy = 'name'; // 'name', 'price_asc', 'price_desc', 'rating'
   String? _selectedBrand;
+  String? _selectedSupplier;
+  List<Map<String, String>> _supplierNames = []; // [{id, name}]
+  Map<String, Set<String>> _supplierProductMap = {}; // supplierId -> Set<productId>
   
   @override
   void initState() {
@@ -39,7 +42,7 @@ class _ProductSearchPageState extends State<ProductSearchPage> {
 
   Future<void> _loadCategories() async {
     try {
-      final data = await supabase.from('categories').select().order('name');
+      final data = await supabase.from('categories').select().order('sort_order').order('name');
       if (mounted) {
         setState(() {
           _categories = (data as List).map((j) => Category.fromJson(j)).toList();
@@ -58,7 +61,7 @@ class _ProductSearchPageState extends State<ProductSearchPage> {
 
     try {
       final query = _searchController.text.trim();
-      var req = supabase.from('products').select();
+      var req = supabase.from('products').select('*, categories(id, name)');
       
       if (query.isNotEmpty) {
         req = req.ilike('name', '%$query%');
@@ -69,6 +72,38 @@ class _ProductSearchPageState extends State<ProductSearchPage> {
 
       final list = data as List;
       final parsed = list.map((j) => Product.fromJson(j)).toList();
+
+      // Load supplier data for Toko filter
+      try {
+        final spData = await supabase
+            .from('supplier_products')
+            .select('product_id, supplier_id, suppliers(id, name)');
+        final spList = (spData as List).cast<Map<String, dynamic>>();
+        
+        final Map<String, String> supplierIdToName = {};
+        final Map<String, Set<String>> supProdMap = {};
+        
+        for (final sp in spList) {
+          final productId = sp['product_id']?.toString() ?? '';
+          final supplierObj = sp['suppliers'] as Map<String, dynamic>?;
+          final supplierId = supplierObj?['id']?.toString() ?? sp['supplier_id']?.toString() ?? '';
+          final supplierName = supplierObj?['name']?.toString() ?? '';
+          
+          if (supplierId.isEmpty || supplierName.isEmpty) continue;
+          supplierIdToName[supplierId] = supplierName;
+          supProdMap.putIfAbsent(supplierId, () => {}).add(productId);
+        }
+        
+        if (mounted) {
+          _supplierNames = supplierIdToName.entries
+              .map((e) => {'id': e.key, 'name': e.value})
+              .toList()
+            ..sort((a, b) => a['name']!.compareTo(b['name']!));
+          _supplierProductMap = supProdMap;
+        }
+      } catch (e) {
+        debugPrint('[SiKulak] Error loading supplier data for filter: $e');
+      }
 
       setState(() {
         _products = parsed;
@@ -91,17 +126,30 @@ class _ProductSearchPageState extends State<ProductSearchPage> {
 
     // 1. Filter by category
     if (_selectedCategoryId != null) {
-      final isUuid = _selectedCategoryId!.contains('-');
-      if (isUuid) {
-        result = result.where((p) => p.categoryId == _selectedCategoryId).toList();
-      } else {
-        result = result.where((p) => p.categoryName.toLowerCase() == _selectedCategoryId!.toLowerCase()).toList();
-      }
+      // Find the selected category object to get both id and name
+      final selectedCat = _categories.cast<Category?>().firstWhere(
+        (c) => c!.id == _selectedCategoryId,
+        orElse: () => null,
+      );
+      final catName = selectedCat?.name.toLowerCase() ?? '';
+      final catId = _selectedCategoryId!;
+
+      result = result.where((p) {
+        if (p.categoryId.isNotEmpty && p.categoryId == catId) return true;
+        if (catName.isNotEmpty && p.categoryName.toLowerCase() == catName) return true;
+        return false;
+      }).toList();
     }
 
     // 2. Filter by brand
     if (_selectedBrand != null) {
       result = result.where((p) => p.brand.toLowerCase() == _selectedBrand!.toLowerCase()).toList();
+    }
+
+    // 3. Filter by supplier/toko
+    if (_selectedSupplier != null) {
+      final productIdsForSupplier = _supplierProductMap[_selectedSupplier] ?? {};
+      result = result.where((p) => productIdsForSupplier.contains(p.id)).toList();
     }
 
     // 3. Sorting
@@ -111,8 +159,6 @@ class _ProductSearchPageState extends State<ProductSearchPage> {
       result.sort((a, b) => b.price.compareTo(a.price));
     } else if (_sortBy == 'rating') {
       result.sort((a, b) => b.rating.compareTo(a.rating));
-    } else if (_sortBy == 'stock') {
-      result.sort((a, b) => b.stock.compareTo(a.stock));
     } else {
       // Default: sort alphabetically by name
       result.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
@@ -173,6 +219,53 @@ class _ProductSearchPageState extends State<ProductSearchPage> {
     );
   }
 
+  // ── SUPPLIER / TOKO FILTER DIALOG ──────────────────────────────
+  void _showSupplierFilterDialog() {
+    if (_supplierNames.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Tidak ada data toko/supplier.')),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Pilih Toko / Supplier'),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView.builder(
+            shrinkWrap: true,
+            itemCount: _supplierNames.length + 1,
+            itemBuilder: (context, index) {
+              if (index == 0) {
+                return ListTile(
+                  title: const Text('Semua Toko', style: TextStyle(fontWeight: FontWeight.bold)),
+                  selected: _selectedSupplier == null,
+                  onTap: () {
+                    setState(() => _selectedSupplier = null);
+                    Navigator.pop(ctx);
+                  },
+                );
+              }
+              final supplier = _supplierNames[index - 1];
+              return ListTile(
+                leading: const Icon(Icons.storefront_rounded, size: 20),
+                title: Text(supplier['name'] ?? ''),
+                selected: _selectedSupplier == supplier['id'],
+                onTap: () {
+                  setState(() => _selectedSupplier = supplier['id']);
+                  Navigator.pop(ctx);
+                },
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
   IconData _getCategoryIcon(String categoryName) {
     final name = categoryName.toLowerCase();
     if (name.contains('shampoo') || name.contains('sampo')) {
@@ -192,6 +285,15 @@ class _ProductSearchPageState extends State<ProductSearchPage> {
     }
     if (name.contains('snack') || name.contains('cemilan') || name.contains('biskuit') || name.contains('roti')) {
       return Icons.cookie_rounded;
+    }
+    if (name.contains('kebersihan')) {
+      return Icons.cleaning_services_rounded;
+    }
+    if (name.contains('detergen') || name.contains('detergent')) {
+      return Icons.local_laundry_service_rounded;
+    }
+    if (name.contains('bahan pokok') || name.contains('sembako')) {
+      return Icons.rice_bowl_rounded;
     }
     return Icons.category_rounded;
   }
@@ -213,6 +315,15 @@ class _ProductSearchPageState extends State<ProductSearchPage> {
     if (name.contains('makanan') || name.contains('food') || name.contains('mi ') || name.contains('mie') || name.contains('snack')) {
       return const Color(0xFFD1FAE5);
     }
+    if (name.contains('kebersihan')) {
+      return const Color(0xFFCCFBF1);
+    }
+    if (name.contains('detergen') || name.contains('detergent')) {
+      return const Color(0xFFE0E7FF);
+    }
+    if (name.contains('bahan pokok') || name.contains('sembako')) {
+      return const Color(0xFFFFEDD5);
+    }
     return const Color(0xFFF1F5F9);
   }
 
@@ -232,6 +343,15 @@ class _ProductSearchPageState extends State<ProductSearchPage> {
     }
     if (name.contains('makanan') || name.contains('food') || name.contains('mi ') || name.contains('mie') || name.contains('snack')) {
       return const Color(0xFF059669);
+    }
+    if (name.contains('kebersihan')) {
+      return const Color(0xFF0D9488);
+    }
+    if (name.contains('detergen') || name.contains('detergent')) {
+      return const Color(0xFF4338CA);
+    }
+    if (name.contains('bahan pokok') || name.contains('sembako')) {
+      return const Color(0xFFEA580C);
     }
     return const Color(0xFF64748B);
   }
@@ -329,15 +449,16 @@ class _ProductSearchPageState extends State<ProductSearchPage> {
                 physics: const BouncingScrollPhysics(),
                 child: Row(
                   children: [
-                    // Filter / Reset button
+                     // Filter / Reset button
                     _buildFilterChip(
                       label: 'Filter',
                       icon: Icons.tune,
-                      isSelected: _sortBy != 'name' || _selectedBrand != null,
+                      isSelected: _sortBy != 'name' || _selectedBrand != null || _selectedSupplier != null,
                       onTap: () {
                         setState(() {
                           _sortBy = 'name';
                           _selectedBrand = null;
+                          _selectedSupplier = null;
                         });
                       },
                     ),
@@ -376,10 +497,15 @@ class _ProductSearchPageState extends State<ProductSearchPage> {
                     const SizedBox(width: 8),
                     // Toko / Supplier
                     _buildFilterChip(
-                      label: 'Toko',
+                      label: _selectedSupplier != null
+                          ? (_supplierNames.firstWhere(
+                              (s) => s['id'] == _selectedSupplier,
+                              orElse: () => {'name': 'Toko'},
+                            )['name'] ?? 'Toko')
+                          : 'Toko',
                       icon: Icons.storefront_rounded,
-                      isSelected: false,
-                      onTap: () {},
+                      isSelected: _selectedSupplier != null,
+                      onTap: _showSupplierFilterDialog,
                     ),
                     const SizedBox(width: 8),
                     // Brand / Merk
@@ -388,16 +514,6 @@ class _ProductSearchPageState extends State<ProductSearchPage> {
                       icon: Icons.sell_outlined,
                       isSelected: _selectedBrand != null,
                       onTap: _showBrandFilterDialog,
-                    ),
-                    const SizedBox(width: 8),
-                    // Jumlah / Stock sort
-                    _buildFilterChip(
-                      label: 'Jumlah',
-                      icon: Icons.inventory_2_outlined,
-                      isSelected: _sortBy == 'stock',
-                      onTap: () {
-                        setState(() => _sortBy = _sortBy == 'stock' ? 'name' : 'stock');
-                      },
                     ),
                   ],
                 ),

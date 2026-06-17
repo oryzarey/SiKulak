@@ -96,6 +96,9 @@ class _InventoryPageState extends State<InventoryPage> {
                     ),
                   ),
                 );
+                if (mounted) {
+                  setState(() {});
+                }
               },
             ),
             if (count > 0)
@@ -207,7 +210,7 @@ class _InventoryPageState extends State<InventoryPage> {
 			if (userId == null) return;
 
 			// Fetch global products for fallbacks
-			final globalProductsData = await supabase.from('products').select();
+			final globalProductsData = await supabase.from('products').select('*, categories(id, name)');
 			final Map<String, String> nameToImage = {};
 			final Map<String, String> nameToBrand = {};
 			final Map<String, String> nameToCategoryName = {};
@@ -315,7 +318,7 @@ class _InventoryPageState extends State<InventoryPage> {
       if (userId == null) return;
 
       // Fetch global products for fallbacks
-      final globalProductsData = await supabase.from('products').select();
+      final globalProductsData = await supabase.from('products').select('*, categories(id, name)');
       final Map<String, String> nameToImage = {};
       final Map<String, String> nameToBrand = {};
       final Map<String, String> nameToCategoryName = {};

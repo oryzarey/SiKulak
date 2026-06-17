@@ -91,6 +91,9 @@ class _PosPageState extends State<PosPage> {
 										builder: (_) => NotificationPage(onNotificationsMarkedRead: () {}),
 									),
 								);
+								if (mounted) {
+									setState(() {});
+								}
 							},
 						),
 						if (count > 0)
@@ -234,7 +237,7 @@ class _PosPageState extends State<PosPage> {
 
 			if ((existing as List).isNotEmpty) return;
 
-			final globalProducts = await supabase.from('products').select();
+			final globalProducts = await supabase.from('products').select('*, categories(id, name)');
 			final products = globalProducts as List;
 
 			for (final p in products) {
