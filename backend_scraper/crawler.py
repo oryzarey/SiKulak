@@ -192,10 +192,35 @@ def main():
                 "last_updated": tanggal_update_str
             })
 
-        # E. Eksekusi Upsert relasi Many-to-Many
-        supabase.table("supplier_products").upsert(
-            payload_relasi, on_conflict="product_id, supplier_id"
-        ).execute()
+        # D.5 Deduplicate payload_relasi by (product_id, supplier_id)
+        dedup_map = {}
+        for item in payload_relasi:
+            key = (item["product_id"], item["supplier_id"])
+            existing = dedup_map.get(key)
+            if existing is None:
+                dedup_map[key] = item
+            else:
+                # Prefer entry with newer last_updated, then non-null/higher price
+                if item.get("last_updated", "") > existing.get("last_updated", ""):
+                    dedup_map[key] = item
+                elif item.get("last_updated", "") == existing.get("last_updated", ""):
+                    # prefer non-null price or the higher price value
+                    if existing.get("price") is None and item.get("price") is not None:
+                        dedup_map[key] = item
+                    elif item.get("price") is not None and existing.get("price") is not None:
+                        if item["price"] > existing["price"]:
+                            dedup_map[key] = item
+
+        payload_relasi = list(dedup_map.values())
+
+        # E. Eksekusi Upsert relasi Many-to-Many (safe: payload_relasi now has unique conflict keys)
+        try:
+            supabase.table("supplier_products").upsert(
+                payload_relasi, on_conflict="product_id, supplier_id"
+            ).execute()
+        except Exception as e:
+            print("❌ Upsert supplier_products failed:", repr(e))
+            raise
         
         # Log hasil akhir
         print(f"✅ {len(payload_relasi)} rows updated")
