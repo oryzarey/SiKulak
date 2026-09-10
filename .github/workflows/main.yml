@@ -1,9 +1,9 @@
-name: Update Harga Pasar (Setiap 3 Hari)
+name: Update Harga Pasar Harian
 
 on:
   schedule:
-    # Format Cron: Menit(0) Jam(0) Hari(Setiap kelipatan 3) Bulan(*) HariDalamSeminggu(*)
-    - cron: '0 0 */3 * *' 
+    # Format Cron: Menit(0) Jam(0) Hari Bulan(*) HariDalamSeminggu(*)
+    - cron: '0 0 */1 * *' 
   workflow_dispatch:
 
 jobs:
